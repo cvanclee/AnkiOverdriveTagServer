@@ -14,16 +14,4 @@
 	<natures>
 		<nature>org.eclipse.jdt.core.javanature</nature>
 	</natures>
-	<linkedResources>
-		<link>
-			<name>build</name>
-			<type>2</type>
-			<location>C:/Users/Critter/Documents/AnkiOverdriveTag/server/build</location>
-		</link>
-		<link>
-			<name>src</name>
-			<type>2</type>
-			<location>C:/Users/Critter/Documents/AnkiOverdriveTag/server/src</location>
-		</link>
-	</linkedResources>
 </projectDescription>
