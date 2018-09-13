@@ -11,7 +11,7 @@ var server = net.createServer(function(client) {
 	  } else {
 		  noble.log("Noble not on")
 	  }
-  }
+  });
   client.on("error", (err) => {
     console.log("connection error"); // client disconnected?
     client.vehicles.forEach((vehicle) => vehicle.disconnect());
