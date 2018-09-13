@@ -5,6 +5,13 @@ var util = require('util');
 var server = net.createServer(function(client) {
   client.vehicles = [];
 
+  noble.on('statechange', function(state) {
+	  if (state == 'poweredOn') {
+		  console.log("Noble on");
+	  } else {
+		  noble.log("Noble not on")
+	  }
+  }
   client.on("error", (err) => {
     console.log("connection error"); // client disconnected?
     client.vehicles.forEach((vehicle) => vehicle.disconnect());
@@ -17,8 +24,11 @@ var server = net.createServer(function(client) {
 	  switch(command[0])
 	  {
 	    case "SCAN":
+	      console.log("Noble info:");
 	      console.log(noble);
+	      console.log("Beginning scan");
 	      if (noble.state === 'poweredOn') {
+	    	console.log("Is powered on");
 	        var discover = function(device) {
 	          client.write(util.format("SCAN;%s;%s;%s\n",
 	              device.id,
@@ -36,6 +46,7 @@ var server = net.createServer(function(client) {
 	        }, 2000);
 	      }
 	      else {
+	    	console.log("Noble not powered on");
 	        client.write("SCAN;ERROR\n");
 	      }
 	      break;
