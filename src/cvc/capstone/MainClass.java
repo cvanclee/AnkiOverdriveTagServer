@@ -2,6 +2,8 @@ package cvc.capstone;
 
 import java.util.List;
 import de.adesso.anki.Vehicle;
+import de.adesso.anki.messages.PingRequestMessage;
+import de.adesso.anki.messages.SetSpeedMessage;
 import de.adesso.anki.AnkiConnector;
 
 public class MainClass {
@@ -30,10 +32,14 @@ public class MainClass {
 			System.out.println("Unable to find vehicles. Exiting");
 			return;
 		}
+		
 		System.out.println("Found " + vehicles.size() + " cars:");
 		for (Vehicle v : vehicles) {
-			System.out.println(v.getAdvertisement().getModelId());
+			String vModelId = String.valueOf(v.getAdvertisement().getModelId());
+			System.out.println("Attempting to connect to model " + vModelId + " address " + v.getAddress());
 			v.connect();
+			System.out.println("Connected. Testing communication with ping waiting for response");
+			v.sendMessage(new PingRequestMessage());
 		}
 	}
 }

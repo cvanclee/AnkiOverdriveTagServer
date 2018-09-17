@@ -24,8 +24,8 @@ var server = net.createServer(function(client) {
 	  switch(command[0])
 	  {
 	    case "SCAN":
-	      console.log("Noble info:");
-	      console.log(noble);
+	      //console.log("Noble info:");
+	      //console.log(noble);
 	      console.log("Beginning scan");
 	      if (noble.state === 'poweredOn') {
 	    	console.log("Is powered on");
@@ -54,13 +54,13 @@ var server = net.createServer(function(client) {
 	    case "CONNECT":
 	      console.log("connect begin");
 	      if (command.length != 2) {
-	        client.write("CONNECT;ERROR\n");
+	        client.write("CONNECT;ERROR-BAD-COMMAND\n");
 	        break;
 	      }
 	
 	      var vehicle = noble._peripherals[command[1]];
 	      if (vehicle === undefined) {
-	        client.write("CONNECT;ERROR\n");
+	        client.write("CONNECT;ERROR-CONNECTING-VEHICLE\n");
 	        break;
 	      }
 	
@@ -89,7 +89,7 @@ var server = net.createServer(function(client) {
 	
 	      setTimeout(() => {
 	        if (!success) {
-	      	  client.write("CONNECT;ERROR\n");
+	      	  client.write("CONNECT;ERROR-TIMEOUT\n");
 	          console.log("connect error");
 	        }
 	      }, 500);
