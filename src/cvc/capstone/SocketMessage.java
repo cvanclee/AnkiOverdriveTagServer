@@ -1,6 +1,8 @@
 package cvc.capstone;
 
-public class SocketMessage {
+import java.io.Serializable;
+
+public class SocketMessage implements Serializable {
 	public String UUID;
 	public int cmd;
 	public String extra;

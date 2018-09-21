@@ -50,7 +50,7 @@ public class GameManager {
 			return false;
 		}
 		System.out.println("Found " + vehicles.size() + " Anki cars");
-		if (vehicles.size() != 2) {
+		if (vehicles.size() != 1) { //TODO: MAKE SURE THIS IS SET TO 2
 			System.out.println("Need exactly 2 cars to be located. Exiting.");
 			return false;
 		}
@@ -72,6 +72,7 @@ public class GameManager {
 			while (readyCount.get() < 2) {
 				while (connectedClients.size() < 2) {
 					Socket cs = serverSocket.accept();
+					System.out.println("New client has connected");
 					ClientManager cm = new ClientManager(cs, this, n);
 					cm.start();
 					connectedClients.put(n, cm);

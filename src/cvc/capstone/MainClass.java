@@ -1,13 +1,5 @@
 package cvc.capstone;
 
-import java.io.IOException;
-import java.net.ServerSocket;
-import java.util.List;
-import de.adesso.anki.Vehicle;
-import de.adesso.anki.messages.PingRequestMessage;
-import de.adesso.anki.messages.SetSpeedMessage;
-import de.adesso.anki.AnkiConnector;
-
 public class MainClass {
 
 	public static final int NODE_JS_SERVER_PORT = 5000;
