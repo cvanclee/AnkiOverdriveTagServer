@@ -1,16 +1,15 @@
 package cvc.capstone;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ClientManager extends Thread {
-	private String UUID;
 	private final Socket clientSocket;
 	private final GameManager myManager;
 	private String myUUID;
@@ -19,45 +18,86 @@ public class ClientManager extends Thread {
 	private OutputStream os;
 	private ObjectOutputStream out;
 	private ObjectInputStream in;
+	private VehicleWrapper myVehicle;
+	private volatile AtomicBoolean isGameReady;
 
-	public ClientManager(Socket clientSocket, GameManager myManager, int myId) {
+	public ClientManager(Socket clientSocket, GameManager myManager, int myId, VehicleWrapper myVehicle)
+			throws ServerException {
 		this.clientSocket = clientSocket;
 		this.myManager = myManager;
 		this.myId = myId;
+		this.myVehicle = myVehicle;
 		myUUID = "";
 		try {
 			os = clientSocket.getOutputStream();
 			out = new ObjectOutputStream(os);
 			in = new ObjectInputStream(clientSocket.getInputStream());
-			clientSocket.setSoTimeout(1000);
+			clientSocket.setSoTimeout(2000);
 		} catch (SocketException e) {
 			e.printStackTrace();
-		}catch (IOException ex) {
+		} catch (IOException ex) {
 			ex.printStackTrace();
 		}
-		waitForNewClient();
-		if (isInterrupted()) {
-			return;
+	}
+
+	@Override
+	public void run() {
+		try {
+			waitForNewClient();
+			if (isInterrupted()) {
+				return;
+			}
+			gameLoopCommunication();
+		} catch (ServerException e) {
+			e.printStackTrace();
 		}
-		gameLoopCommunication();
 	}
 
+	public void sendCmd(int cmd, String extra) throws ServerException {
+		try {
+			SocketMessage msg = new SocketMessage(myUUID, cmd, extra);
+			out.writeObject(msg);
+			out.flush();
+			os.flush();
+		} catch (IOException e) {
+			throw new ServerException(e);
+		}
+	}
+
+	/**
+	 * Loop until game manager notifies it is ready to start accepting movement
+	 * commands. Then loop until game manager notifies the game is over, accepting
+	 * client commands
+	 */
 	private void gameLoopCommunication() {
-
+		try {
+			while (!isInterrupted() && !isGameReady.get()) {
+				Thread.sleep(10);
+			}
+			if (isInterrupted()) {
+				return;
+			}
+			while (!isGameReady.get()) {
+				SocketMessage msg = (SocketMessage) in.readObject();
+			}
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
-	private void waitForNewClient() {
+	private void waitForNewClient() throws ServerException {
 		while (!isInterrupted() && !ready) {
 			try {
-				in.reset();
 				SocketMessage msg = (SocketMessage) in.readObject();
 				if (msg.cmd == 1000) {
+					System.out.println(
+							"New client attempting to connect " + clientSocket.getRemoteSocketAddress().toString());
 					myUUID = msg.UUID;
-					msg = new SocketMessage("", 1009, "");
-					out.reset();
-					out.writeObject(msg);
-					out.flush();
-					os.flush();
+					sendCmd(1009, myVehicle.getVehicle().toString());
 				} else if (msg.cmd == 1001 && msg.UUID.equals(myUUID) && !ready) {
 					ready = true;
 					myManager.getReadyCount().incrementAndGet();
@@ -65,6 +105,7 @@ public class ClientManager extends Thread {
 					myUUID = "";
 					ready = false;
 					myManager.getReadyCount().decrementAndGet();
+					myManager.addVehicle(myVehicle);
 					myManager.getConnectedClients().remove(myId);
 					clientSocket.close();
 					interrupt();
@@ -87,7 +128,7 @@ public class ClientManager extends Thread {
 	}
 
 	public String getUUID() {
-		return UUID;
+		return myUUID;
 	}
 
 	public Socket getClientSocket() {
@@ -96,5 +137,17 @@ public class ClientManager extends Thread {
 
 	public int getMyId() {
 		return myId;
+	}
+
+	public void setVehicle(VehicleWrapper v) {
+		this.myVehicle = v;
+	}
+
+	public VehicleWrapper getVehicle() {
+		return myVehicle;
+	}
+
+	public void setGameReady(boolean gr) {
+		isGameReady.set(gr);
 	}
 }

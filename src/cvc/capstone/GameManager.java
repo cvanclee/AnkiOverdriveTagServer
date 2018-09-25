@@ -10,25 +10,41 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import de.adesso.anki.AnkiConnector;
+import de.adesso.anki.RoadmapScanner;
 import de.adesso.anki.Vehicle;
 import de.adesso.anki.messages.PingRequestMessage;
+import de.adesso.anki.roadmap.Roadmap;
 
 public class GameManager {
 
 	private AnkiConnector anki;
-	private List<Vehicle> vehicles;
+	private volatile List<VehicleWrapper> vehicles;
 	private volatile ConcurrentHashMap<Integer, ClientManager> connectedClients;
 	private volatile AtomicInteger readyCount;
-	private CarManager carManager;
+	private Roadmap roadMap;
 
 	public GameManager() {
-		carManager = new CarManager();
+		vehicles = new ArrayList<VehicleWrapper>();
 		connectedClients = new ConcurrentHashMap<Integer, ClientManager>();
 		readyCount = new AtomicInteger(0);
 	}
 
 	public void play() {
 		waitForPlayers();
+		scanTrack();
+		mainGameLoop();
+	}
+
+	public void mainGameLoop() {
+		for (ClientManager m : connectedClients.values()) {
+			m.setGameReady(true);
+		}
+
+		// Keep reading the command queue that is populated by the client managers, and
+		// the car queue
+		while (true) {
+
+		}
 	}
 
 	public boolean setUp() {
@@ -43,28 +59,34 @@ public class GameManager {
 
 		System.out.println("Looking for cars...");
 		try {
-			vehicles = anki.findVehicles();
+			List<Vehicle> regVehicles = anki.findVehicles();
+			for (Vehicle v : regVehicles) {
+				VehicleWrapper vw = new VehicleWrapper(v);
+				vehicles.add(vw);
+			}
 		} catch (Exception e) {
 			e.printStackTrace();
 			System.out.println("Unable to find vehicles. Exiting");
 			return false;
 		}
 		System.out.println("Found " + vehicles.size() + " Anki cars");
-		if (vehicles.size() != 1) { //TODO: MAKE SURE THIS IS SET TO 2
+		if (vehicles.size() != 2) {
 			System.out.println("Need exactly 2 cars to be located. Exiting.");
 			return false;
 		}
-		for (Vehicle v : vehicles) {
-			String vModelId = String.valueOf(v.getAdvertisement().getModelId());
-			System.out.println("Attempting to connect to model " + vModelId + " address " + v.getAddress());
-			v.connect();
+		for (VehicleWrapper v : vehicles) {
+			String vModelId = String.valueOf(v.getVehicle().getAdvertisement().getModelId());
+			System.out
+					.println("Attempting to connect to model " + vModelId + " address " + v.getVehicle().getAddress());
+			v.getVehicle().connect();
 			System.out.println("Connected. Testing communication with a ping.");
-			v.sendMessage(new PingRequestMessage());
+			v.getVehicle().sendMessage(new PingRequestMessage());
 		}
 		return true;
 	}
 
 	private void waitForPlayers() {
+		Collections.shuffle(vehicles); // Random vehicle per client
 		System.out.println("Waiting for clients");
 		try {
 			int n = 0;
@@ -72,21 +94,36 @@ public class GameManager {
 			while (readyCount.get() < 2) {
 				while (connectedClients.size() < 2) {
 					Socket cs = serverSocket.accept();
-					System.out.println("New client has connected");
-					ClientManager cm = new ClientManager(cs, this, n);
-					cm.start();
-					connectedClients.put(n, cm);
+					System.out.println("New client has had socket connection accepted");
+					ClientManager clientManager = new ClientManager(cs, this, n, vehicles.remove(0));
+					clientManager.start();
+					connectedClients.put(n, clientManager);
 					n++;
 					Thread.sleep(10);
 				}
 				Thread.sleep(10);
 			}
 			System.out.println("Have enough clients to start");
+			for (int i = 0; i < connectedClients.size(); i++) {
+				vehicles.add(connectedClients.get(i).getVehicle());
+			}
 		} catch (IOException e) {
 			e.printStackTrace();
 		} catch (InterruptedException e) {
 			e.printStackTrace();
+		} catch (ServerException e) {
+			e.printStackTrace();
 		}
+	}
+
+	public void scanTrack() {
+		System.out.println("Scanning track...");
+		RoadmapScanner roadMapScannerOne = new RoadmapScanner(vehicles.get(0).getVehicle());
+		RoadmapScanner roadMapScannerTwo = new RoadmapScanner(vehicles.get(1).getVehicle());
+		roadMapScannerOne.startScanning();
+		roadMapScannerTwo.startScanning();
+		roadMap = roadMapScannerOne.getRoadmap();
+		System.out.println("Done scanning...");
 	}
 
 	private void stop() {
@@ -98,7 +135,11 @@ public class GameManager {
 	protected ConcurrentHashMap<Integer, ClientManager> getConnectedClients() {
 		return connectedClients;
 	}
-	
+
+	protected synchronized void addVehicle(VehicleWrapper v) {
+		vehicles.add(v);
+	}
+
 	protected AtomicInteger getReadyCount() {
 		return readyCount;
 	}
