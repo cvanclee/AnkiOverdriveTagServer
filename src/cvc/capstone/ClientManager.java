@@ -27,6 +27,7 @@ public class ClientManager extends Thread {
 		this.myManager = myManager;
 		this.myId = myId;
 		this.myVehicle = myVehicle;
+		this.isGameReady = new AtomicBoolean(false);
 		myUUID = "";
 		try {
 			os = clientSocket.getOutputStream();

@@ -24,8 +24,6 @@ var server = net.createServer(function(client) {
 	  switch(command[0])
 	  {
 	    case "SCAN":
-	      //console.log("Noble info:");
-	      //console.log(noble);
 	      console.log("Beginning scan");
 	      if (noble.state === 'poweredOn') {
 	    	console.log("Is powered on");

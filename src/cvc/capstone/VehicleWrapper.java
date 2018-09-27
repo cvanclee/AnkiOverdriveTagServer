@@ -4,10 +4,13 @@ import de.adesso.anki.Vehicle;
 
 public class VehicleWrapper {
 	private Vehicle vehicle;
+	private int clientManagerId; //The client manager linked with this vehicle 
 
-	public VehicleWrapper(Vehicle vehicle) {
+	public VehicleWrapper(Vehicle vehicle, int clientManagerId) {
 		this.vehicle = vehicle;
+		this.clientManagerId = clientManagerId;
 	}
+	
 
 	public Vehicle getVehicle() {
 		return vehicle;
@@ -16,6 +19,14 @@ public class VehicleWrapper {
 	public String getName() {
 		int idx = vehicle.getAdvertisement().getIdentifier();
 		return VehicleNames.getNameById(idx);
+	}
+	
+	public int getClientManagerId() {
+		return clientManagerId;
+	}
+	
+	public void setClientManagerId(int cmi) {
+		clientManagerId = cmi;
 	}
 
 	private enum VehicleNames {
