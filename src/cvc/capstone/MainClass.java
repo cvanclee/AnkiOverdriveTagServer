@@ -11,6 +11,7 @@ public class MainClass {
 	public static String NODE_JS_SERVER_NAME = null;
 	public static int MY_SERVER_PORT = -1;
 	public static int COMMUNICATION_TIMEOUT = -1; // ms
+	public static int MAX_QUEUE_SIZE = 20; //max size of the client-server and server-car command queues
 
 	public static void main(String[] args) throws ServerException {
 		String propPath;

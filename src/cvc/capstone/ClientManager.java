@@ -30,14 +30,16 @@ public class ClientManager extends Thread {
 		this.isGameReady = new AtomicBoolean(false);
 		myUUID = "";
 		try {
+			clientSocket.setSoTimeout(2000);
 			os = clientSocket.getOutputStream();
 			out = new ObjectOutputStream(os);
 			in = new ObjectInputStream(clientSocket.getInputStream());
-			clientSocket.setSoTimeout(2000);
 		} catch (SocketException e) {
 			e.printStackTrace();
-		} catch (IOException ex) {
-			ex.printStackTrace();
+			throw new ServerException(e);
+		} catch (IOException e) {
+			e.printStackTrace();
+			throw new ServerException(e);
 		}
 	}
 
@@ -54,6 +56,13 @@ public class ClientManager extends Thread {
 		}
 	}
 
+	/**
+	 * Send a command to the connected client
+	 * 
+	 * @param cmd the command to send
+	 * @param extra stores extra command parameters
+	 * @throws ServerException
+	 */
 	public void sendCmd(int cmd, String extra) throws ServerException {
 		try {
 			SocketMessage msg = new SocketMessage(myUUID, cmd, extra);
@@ -78,8 +87,19 @@ public class ClientManager extends Thread {
 			if (isInterrupted()) {
 				return;
 			}
-			while (!isGameReady.get()) {
-				SocketMessage msg = (SocketMessage) in.readObject();
+			while (!isInterrupted() && isGameReady.get()) { // main game loop, after scanning
+				SocketMessage msg = null;
+				try {
+					msg = (SocketMessage) in.readObject();
+				} catch (SocketTimeoutException e) {
+					continue;
+				}
+				try {
+					SocketMessageWithVehicle msgv = new SocketMessageWithVehicle(msg, myVehicle);
+					myManager.getServerClientQueue().add(msgv);
+				} catch (IllegalStateException e) { // BAD. Notify server queue is over capacity
+					myManager.getClientOverflowStatus().set(true);
+				}
 			}
 		} catch (InterruptedException e) {
 			e.printStackTrace();
@@ -90,6 +110,15 @@ public class ClientManager extends Thread {
 		}
 	}
 
+	/**
+	 * Wait for a client to connect, and confirm it has been accepted.
+	 * One connected, wait for the client to send a ready signal.
+	 * Waiting ends when the client sends a ready signal, sends a 
+	 * disconnect signal, the connection is closed, or the thread receives
+	 * an interrupt.
+	 * 
+	 * @throws ServerException
+	 */
 	private void waitForNewClient() throws ServerException {
 		while (!isInterrupted() && !ready) {
 			try {
@@ -122,8 +151,10 @@ public class ClientManager extends Thread {
 				}
 			} catch (ClassNotFoundException e) {
 				e.printStackTrace();
+				return;
 			} catch (IOException e) {
 				e.printStackTrace();
+				return;
 			}
 		}
 	}

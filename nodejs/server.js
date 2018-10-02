@@ -25,7 +25,7 @@ var server = net.createServer(function(client) {
 	  {
 	    case "SCAN":
 	      console.log("Beginning scan");
-	      if (noble.state === 'poweredOn') {
+	      //if (noble.state === 'poweredOn') {
 	    	console.log("Is powered on");
 	        var discover = function(device) {
 	          client.write(util.format("SCAN;%s;%s;%s\n",
@@ -42,11 +42,11 @@ var server = net.createServer(function(client) {
 	           noble.removeListener('discover', discover)
 	           client.write("SCAN;COMPLETED\n");
 	        }, 2000);
-	      }
-	      else {
-	    	console.log("Noble not powered on");
-	        client.write("SCAN;ERROR\n");
-	      }
+	      //}
+	      //else {
+	    	//console.log("Noble not powered on");
+	        //client.write("SCAN;ERROR\n");
+	      //}
 	      break;
 	      
 	    case "CONNECT":
