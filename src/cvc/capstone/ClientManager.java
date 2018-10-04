@@ -82,7 +82,14 @@ public class ClientManager extends Thread {
 	private void gameLoopCommunication() {
 		try {
 			while (!isInterrupted() && !isGameReady.get()) {
-				Thread.sleep(10);
+				try {
+					SocketMessage msg = (SocketMessage) in.readObject();
+					if (msg.cmd == 1002) {
+						clientLeftLobby();
+					}
+				} catch (SocketTimeoutException e) {
+					continue;
+				}
 			}
 			if (isInterrupted()) {
 				return;
@@ -101,11 +108,7 @@ public class ClientManager extends Thread {
 					myManager.getClientOverflowStatus().set(true);
 				}
 			}
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		} catch (ClassNotFoundException e) {
-			e.printStackTrace();
-		} catch (IOException e) {
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
 	}
@@ -132,13 +135,7 @@ public class ClientManager extends Thread {
 					ready = true;
 					myManager.getReadyCount().incrementAndGet();
 				} else if (msg.cmd == 1002 && msg.UUID.equals(myUUID)) {
-					myUUID = "";
-					ready = false;
-					myManager.getReadyCount().decrementAndGet();
-					myManager.addVehicle(myVehicle);
-					myManager.getConnectedClients().remove(myId);
-					clientSocket.close();
-					interrupt();
+					clientLeftLobby();
 				}
 				Thread.sleep(10);
 			} catch (InterruptedException e) {
@@ -149,16 +146,30 @@ public class ClientManager extends Thread {
 				} catch (InterruptedException e1) {
 					;
 				}
-			} catch (ClassNotFoundException e) {
-				e.printStackTrace();
-				return;
-			} catch (IOException e) {
+			} catch (Exception e) {
 				e.printStackTrace();
 				return;
 			}
 		}
 	}
-
+	
+	private void clientLeftLobby() {
+		System.out.println("A client disconnected");
+		myUUID = "";
+		if (ready) {
+			myManager.getReadyCount().decrementAndGet();
+		}
+		ready = false;
+		myManager.addVehicle(myVehicle);
+		myManager.getConnectedClients().remove(myId);
+		try {
+			clientSocket.close();
+		} catch (IOException e) {
+			;
+		}
+		interrupt();
+	}
+	
 	public String getUUID() {
 		return myUUID;
 	}

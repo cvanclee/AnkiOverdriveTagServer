@@ -9,13 +9,17 @@ public class VehicleWrapper {
 	private int clientManagerId; //The client manager linked with this vehicle
 	private volatile AtomicInteger speed;
 	private volatile AtomicInteger accel;
-	private volatile float laneOffset; //no AtomicFloat. synchronize all access instead
+	private volatile float laneOffset; // no AtomicFloat. synchronize all access instead
+	private volatile AtomicInteger score; //Game score
+	private float[] offsets = { GameManager.LEFTMOST_OFFSET, GameManager.LEFTINNER_OFFSET,
+			GameManager.RIGHTINNER_OFFSET, GameManager.RIGHTMOST_OFFSET };
 
 	public VehicleWrapper(Vehicle vehicle, int clientManagerId) {
 		this.vehicle = vehicle;
 		this.clientManagerId = clientManagerId;
 		speed = new AtomicInteger(GameManager.MIN_SPEED);
 		accel = new AtomicInteger(GameManager.MIN_ACCEL);
+		score = new AtomicInteger(0);
 	}
 	
 	public Vehicle getVehicle() {
@@ -45,6 +49,10 @@ public class VehicleWrapper {
 		accel.set(a);
 	}
 	
+	public synchronized void incScore(int inc) {
+		score.set(score.get() + inc);
+	}
+	
 	public AtomicInteger getSpeed() {
 		return speed;
 	}
@@ -56,9 +64,24 @@ public class VehicleWrapper {
 	public synchronized float getLaneOffset() {
 		return laneOffset;
 	}
-	
+
+	/**
+	 * Sets the lane offset, rounding to the nearest valid lane offset from the
+	 * given offset
+	 * 
+	 * @param offset offset to set to
+	 */
 	public synchronized void setLaneOffset(float offset) {
-		laneOffset = offset;
+		float distance = Math.abs(offsets[0] - offset);
+		int idx = 0;
+		for (int c = 1; c < offsets.length; c++) {
+			float cdistance = Math.abs(offsets[c] - offset);
+			if (cdistance < distance) {
+				idx = c;
+				distance = cdistance;
+			}
+		}
+		laneOffset = offsets[idx];
 	}
 
 	private enum VehicleNames {
