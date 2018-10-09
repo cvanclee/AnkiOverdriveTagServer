@@ -8,6 +8,7 @@ import org.junit.runners.Suite;
 @Suite.SuiteClasses({
    ClientManagerTests.class,
    GameManagerTests.class,
+   VehicleWrapperTests.class
 })
 
 public class TestSuite {

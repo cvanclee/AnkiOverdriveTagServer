@@ -1,5 +1,6 @@
 package cvc.capstone;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import de.adesso.anki.Vehicle;
@@ -13,6 +14,7 @@ public class VehicleWrapper {
 	private volatile AtomicInteger score; //Game score
 	private float[] offsets = { GameManager.LEFTMOST_OFFSET, GameManager.LEFTINNER_OFFSET,
 			GameManager.RIGHTINNER_OFFSET, GameManager.RIGHTMOST_OFFSET };
+	private volatile AtomicBoolean bearing; //true for one direction, false for the other
 
 	public VehicleWrapper(Vehicle vehicle, int clientManagerId) {
 		this.vehicle = vehicle;
@@ -20,6 +22,7 @@ public class VehicleWrapper {
 		speed = new AtomicInteger(GameManager.MIN_SPEED);
 		accel = new AtomicInteger(GameManager.MIN_ACCEL);
 		score = new AtomicInteger(0);
+		bearing = new AtomicBoolean(true);
 	}
 	
 	public Vehicle getVehicle() {
@@ -47,6 +50,10 @@ public class VehicleWrapper {
 	public synchronized void setSpeedAndAccel(int s, int a) {
 		speed.set(s);
 		accel.set(a);
+	}
+	
+	public AtomicBoolean getBearing() {
+		return bearing;
 	}
 	
 	public synchronized void incScore(int inc) {

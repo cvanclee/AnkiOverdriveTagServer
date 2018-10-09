@@ -17,6 +17,7 @@ import de.adesso.anki.*;
 import de.adesso.anki.messages.*;
 import de.adesso.anki.messages.LightsPatternMessage.*;
 import de.adesso.anki.roadmap.*;
+import de.adesso.anki.roadmap.roadpieces.Roadpiece;
 
 public class GameManager {
 
@@ -24,7 +25,7 @@ public class GameManager {
 	public static final int ACCEL_INCREMENT = 10;
 	public static final int MAX_SPEED = 1400;
 	public static final int MAX_ACCEL = 13000;
-	public static final int MIN_SPEED = 400;
+	public static final int MIN_SPEED = 400; //default 400
 	public static final int MIN_ACCEL = 12000;
 	public static final float LEFTMOST_OFFSET = -68.0f;
 	public static final float LEFTINNER_OFFSET = -23.0f;
@@ -42,8 +43,12 @@ public class GameManager {
 	private volatile ArrayBlockingQueue<SocketMessageWithVehicle> serverClientQueue; //Client populates this with cmds
 	private volatile ArrayBlockingQueue<Message> serverCarQueue; //Anki cars/SDK populates this with responses
 	private Timer slowTimer; //schedules car slowsdowns
-	private Timer scoreTimer; //schedules score increments for it
-	private VehicleWrapper it; //The vehicle that is it
+	private Timer scoreTimer; //schedules score increments for 'it'
+	private Timer blockCooldown; //keeps track of when the last successful block was applied
+	private Timer blockDuration; //keeps track of how much longer 'it' will be blocking
+	private VehicleWrapper it; //The vehicle that is 'it'
+	private VehicleWrapper tagger; //The vehicle that is 'tagger'
+	private volatile AtomicBoolean blocking; //Keeps track of whether 'it' is blocking
 
 	public GameManager() {
 		vehicles = new ArrayList<VehicleWrapper>();
@@ -52,6 +57,7 @@ public class GameManager {
 		serverClientQueue = new ArrayBlockingQueue<SocketMessageWithVehicle>(MainClass.MAX_QUEUE_SIZE, false);
 		serverCarQueue = new ArrayBlockingQueue<Message>(MainClass.MAX_QUEUE_SIZE, false);
 		clientOverflowStatus = new AtomicBoolean(false);
+		blocking = new AtomicBoolean(false);
 	}
 
 	public void play() {
@@ -74,6 +80,7 @@ public class GameManager {
 			
 			//Notify clients of roles and that the game has begun
 			it = vehicles.get(0);
+			tagger = vehicles.get(1);
 			connectedClients.get(vehicles.get(0).getClientManagerId()).sendCmd(1010, ""); //it
 			connectedClients.get(vehicles.get(1).getClientManagerId()).sendCmd(1011, ""); //tagger
 			for (ClientManager m : connectedClients.values()) {
@@ -111,6 +118,10 @@ public class GameManager {
 						break;
 					case 1006:
 						turnAround(msgv);
+					case 1007:
+						tagAttempt(msgv);
+					case 1008:
+						blockAttempt(msgv);
 					default:
 						;
 					}
@@ -147,7 +158,7 @@ public class GameManager {
 	 * vehicle is added back to the unassigned pool, and it will wait for another
 	 * client to connect.
 	 */
-	private void waitForPlayers() {
+	public void waitForPlayers() {
 		Collections.shuffle(vehicles); // Random vehicle per client
 		System.out.println("Waiting for clients");
 		try {
@@ -163,7 +174,6 @@ public class GameManager {
 					connectedClients.put(n, clientManager);
 					n++;
 				}
-				Thread.sleep(10);
 			}
 			serverSocket.close();
 			System.out.println("Have enough clients to start");
@@ -171,8 +181,6 @@ public class GameManager {
 				vehicles.add(cm.getVehicle());
 			}
 		} catch (IOException e) {
-			e.printStackTrace();
-		} catch (InterruptedException e) {
 			e.printStackTrace();
 		} catch (ServerException e) {
 			e.printStackTrace();
@@ -199,8 +207,8 @@ public class GameManager {
 				return false;
 			}
 			roadMapScannerTwo.startScanning();
-			vehicles.get(0).getVehicle().sendMessage(new SetOffsetFromRoadCenterMessage(0));
-			vehicles.get(0).getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, 50, 1000));
+			vehicles.get(1).getVehicle().sendMessage(new SetOffsetFromRoadCenterMessage(0));
+			vehicles.get(1).getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, 50, 1000));
 			while (!roadMapScannerOne.isComplete()) {
 				try {
 					Thread.sleep(2);
@@ -218,9 +226,9 @@ public class GameManager {
 					return false;
 				}
 			}
-			vehicles.get(0).getVehicle().sendMessage(new SetSpeedMessage(0, 12500));
 			vehicles.get(1).getVehicle().sendMessage(new SetSpeedMessage(0, 12500));
 			roadMap = roadMapScannerOne.getRoadmap();
+			Roadmap tempMap = roadMapScannerTwo.getRoadmap();
 			vehicles.get(0).getVehicle().removeAllListeners();
 			vehicles.get(1).getVehicle().removeAllListeners(); // For the listeners the roadmap scanner added
 			attachHandles(vehicles);
@@ -297,6 +305,11 @@ public class GameManager {
 		lpm = new LightsPatternMessage();
 		lpm.add(tagLightEngine);
 		lpm.add(tagLightFront);
+		try {
+			Thread.sleep(10);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
 		vehicles.get(1).getVehicle().sendMessage(lpm);
 	}
 	
@@ -337,7 +350,7 @@ public class GameManager {
 	}
 
 	private void changeLaneLeft(SocketMessageWithVehicle msgv) {
-		switch (Math.round(msgv.myVehicle.getLaneOffset())) { // has to be int to switch
+		switch ((int) msgv.myVehicle.getLaneOffset()) { // has to be int to switch
 		case (int) LEFTMOST_OFFSET:
 			return;
 		case (int) LEFTINNER_OFFSET:
@@ -358,7 +371,7 @@ public class GameManager {
 	}
 	
 	private void changeLaneRight(SocketMessageWithVehicle msgv) {
-		switch (Math.round(msgv.myVehicle.getLaneOffset())) { // has to be int to switch
+		switch ((int) msgv.myVehicle.getLaneOffset()) { // has to be int to switch
 		case (int) RIGHTMOST_OFFSET:
 			return;
 		case (int) RIGHTINNER_OFFSET:
@@ -379,7 +392,30 @@ public class GameManager {
 	}
 	
 	private void turnAround(SocketMessageWithVehicle msgv) {
-		msgv.myVehicle.getVehicle().sendMessage(new TurnMessage(0, 0));
+		msgv.myVehicle.getVehicle().sendMessage(new TurnMessage(3, 0));
+	}
+
+	/**
+	 * If the command issuer is 'tagger', 'tagger' is in the same lane as 'it', and
+	 * there are no curved road pieces between 'it' and 'tagger' (in the direction
+	 * 'tagger' is facing), a successful tag occurs.
+	 * 
+	 * @param msgv
+	 */
+	private void tagAttempt(SocketMessageWithVehicle msgv) {
+		if (msgv.myVehicle == it) {
+			return; //it can't tag itself
+		}
+		if (it.getLaneOffset() != tagger.getLaneOffset()) { // not same lane
+			return;
+		}
+		
+	}
+	
+	private void blockAttempt(SocketMessageWithVehicle msgv) {
+		if (msgv.myVehicle != it) {
+			return; //taggers can't block
+		}
 	}
 	
 	public ArrayBlockingQueue<SocketMessageWithVehicle> getServerClientQueue() {
@@ -424,6 +460,7 @@ public class GameManager {
 		
 		@Override
 		public void messageReceived(LocalizationPositionUpdateMessage m) {
+			System.out.println("roadpiece:" + m.getRoadPieceId());
 			myVehicle.setLaneOffset(m.getOffsetFromRoadCenter());
 		}
 	}
@@ -436,7 +473,7 @@ public class GameManager {
 		}
 		
 		@Override
-		public void messageReceived(LocalizationTransitionUpdateMessage m) {
+		public void messageReceived(LocalizationTransitionUpdateMessage m) { //transition bar
 			myVehicle.setLaneOffset(m.getOffsetFromRoadCenter());
 		}
 	}
@@ -456,6 +493,10 @@ public class GameManager {
 	
 	private class IncrementScoreTask extends TimerTask {
 
+		/**
+		 * Increments 'its' score by 2 every 30 seconds, this should get restarted if a
+		 * new player becomes 'it'
+		 */
 		@Override
 		public void run() {
 			it.incScore(2);
@@ -465,11 +506,14 @@ public class GameManager {
 	private class SlowCarsTask extends TimerTask {
 		private static final int SPEED_SLOWDOWN = -20;
 		private static final int ACCEL_SLOWDOWN = -20;
-		
+
+		/**
+		 * Slow down the cars every s seconds by some -speed, -acceleration
+		 */
 		@Override
 		public void run() {
 			for (VehicleWrapper vw : vehicles) {
-				if (vw.getSpeed().get() <  MIN_SPEED || vw.getAcceleration().get() < MIN_ACCEL) {
+				if (vw.getSpeed().get() < MIN_SPEED || vw.getAcceleration().get() < MIN_ACCEL) {
 					continue;
 				}
 				vw.changeSpeedAndAccel(SPEED_SLOWDOWN, ACCEL_SLOWDOWN);

@@ -9,7 +9,7 @@ public class MainClass {
 
 	public static int NODE_JS_SERVER_PORT = -1;
 	public static String NODE_JS_SERVER_NAME = null;
-	public static int MY_SERVER_PORT = -1;
+	public static int MY_SERVER_PORT = 4999;
 	public static int COMMUNICATION_TIMEOUT = -1; // ms
 	public static int MAX_QUEUE_SIZE = 20; //max size of the client-server and server-car command queues
 

@@ -39,14 +39,10 @@ public class ClientManagerTests {
 	public void cleanup() throws Exception {
 		try {
 			fakeClientSocket.close();
-		} catch (Exception e) {
-			;
-		}
+		} catch (Exception e) {}
 		try {
 			fakeServerSocket.close();
-		} catch (Exception e) {
-			;
-		}
+		} catch (Exception e) {}
 	}
 
 	/**
@@ -112,7 +108,7 @@ public class ClientManagerTests {
 	
 	/**
 	 * Equivalence classes:
-	 * The socket is connected (return, the client receives the command)
+	 * The socket is connected (return)
 	 * The socket is not connected (ServerException thrown)
 	 */
 	@Test
