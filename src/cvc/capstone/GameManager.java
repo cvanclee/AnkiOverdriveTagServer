@@ -5,6 +5,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -40,6 +41,7 @@ public class GameManager {
 	private volatile AtomicInteger readyCount; //number of clients that are ready
 	private volatile AtomicBoolean clientOverflowStatus; //true if command queue overflows (really bad)
 	private Roadmap roadMap; //the physical roadmap, created by scanning the track
+	private List<Roadpiece> roadMapList;
 	private volatile ArrayBlockingQueue<SocketMessageWithVehicle> serverClientQueue; //Client populates this with cmds
 	private volatile ArrayBlockingQueue<Message> serverCarQueue; //Anki cars/SDK populates this with responses
 	private Timer slowTimer; //schedules car slowsdowns
@@ -49,6 +51,8 @@ public class GameManager {
 	private VehicleWrapper it; //The vehicle that is 'it'
 	private VehicleWrapper tagger; //The vehicle that is 'tagger'
 	private volatile AtomicBoolean blocking; //Keeps track of whether 'it' is blocking
+	private int startPieceListIndex;
+	private HashMap<Integer, Integer> uniquePieceIdMap; //Unique pieces IDs found on track -> index on map
 
 	public GameManager() {
 		vehicles = new ArrayList<VehicleWrapper>();
@@ -198,16 +202,24 @@ public class GameManager {
 			RoadmapScanner roadMapScannerOne = new RoadmapScanner(vehicles.get(0).getVehicle());
 			RoadmapScanner roadMapScannerTwo = new RoadmapScanner(vehicles.get(1).getVehicle());
 			roadMapScannerOne.startScanning();
-			vehicles.get(0).getVehicle().sendMessage(new SetOffsetFromRoadCenterMessage(0));
+			Thread.sleep(10);
+			vehicles.get(0).getVehicle().sendMessage(new ChangeLaneMessage(LEFTMOST_OFFSET, 50, 1000));
+			Thread.sleep(10);
+			vehicles.get(0).getVehicle().sendMessage(new ChangeLaneMessage(LEFTMOST_OFFSET, 50, 1000));
+			Thread.sleep(10);
 			vehicles.get(0).getVehicle().sendMessage(new ChangeLaneMessage(LEFTMOST_OFFSET, 50, 1000));
 			try {
-				Thread.sleep(1000); // To try to get them not lined up, so I can change lanes
+				Thread.sleep(500); // To try to get them not lined up, so I can change lanes
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 				return false;
 			}
 			roadMapScannerTwo.startScanning();
-			vehicles.get(1).getVehicle().sendMessage(new SetOffsetFromRoadCenterMessage(0));
+			Thread.sleep(10);
+			vehicles.get(1).getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, 50, 1000));
+			Thread.sleep(10);
+			vehicles.get(1).getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, 50, 1000));
+			Thread.sleep(10);
 			vehicles.get(1).getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, 50, 1000));
 			while (!roadMapScannerOne.isComplete()) {
 				try {
@@ -232,6 +244,35 @@ public class GameManager {
 			vehicles.get(0).getVehicle().removeAllListeners();
 			vehicles.get(1).getVehicle().removeAllListeners(); // For the listeners the roadmap scanner added
 			attachHandles(vehicles);
+			attachDelocalizationHandle(vehicles);
+			roadMapList = roadMap.toList();
+			vehicles.get(0).getPieceIndex().set(0); //The cars stop on map index 0
+			vehicles.get(1).getPieceIndex().set(0);
+			System.out.println("------");
+			boolean hasStart = false;
+			generateUniqueMap();
+			for (int i = 0; i < roadMapList.size(); i++) {
+				Roadpiece p = roadMapList.get(i);
+				if (p.getPieceId() == 33) {
+					if (hasStart) {
+						System.out.println("Only one start piece is allowed. Exiting.");
+						return false;
+					}
+					startPieceListIndex = i;
+					hasStart = true;
+				}
+				System.out.print(p.getPieceId() + ", reversed: " + p.isReversed() + ":::");
+			
+			}
+			if (!hasStart) {
+				System.out.println("No start piece detected. Exiting.");
+			}
+			System.out.println("\n------");
+			System.out.println("Unique piece IDs and position in map:");
+			for (Integer i : uniquePieceIdMap.keySet()) {
+				System.out.println("PieceId: " + i + ", map index: " + uniquePieceIdMap.get(i));
+			}
+			System.out.println("------");
 			System.out.println("Done scanning. Game beginning.");
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -285,7 +326,7 @@ public class GameManager {
 			v.getVehicle().sendMessage(new SdkModeMessage());
 			System.out.println("Connected");
 		}
-		attachHandles(vehicles);
+		attachDelocalizationHandle(vehicles);
 		return true;
 	}
 	
@@ -320,14 +361,19 @@ public class GameManager {
 	 */
 	private void attachHandles(List<VehicleWrapper> vehicles) {
 		for (VehicleWrapper vw : vehicles) {
-			CarDelocalizedHandler cdh = new CarDelocalizedHandler(vw);
 			CarLocalizationHandler cdl = new CarLocalizationHandler(vw);
 			CarTransitionHandler cth = new CarTransitionHandler(vw);
 			CarIntersectionHandler cih = new CarIntersectionHandler(vw);
-			vw.getVehicle().addMessageListener(VehicleDelocalizedMessage.class, cdh);
 			vw.getVehicle().addMessageListener(LocalizationPositionUpdateMessage.class, cdl);
 			vw.getVehicle().addMessageListener(LocalizationTransitionUpdateMessage.class, cth);
 			vw.getVehicle().addMessageListener(LocalizationIntersectionUpdateMessage.class, cih);
+		}
+	}
+	
+	private void attachDelocalizationHandle(List<VehicleWrapper> vehicles) {
+		for (VehicleWrapper vw : vehicles) {
+			CarDelocalizedHandler cdh = new CarDelocalizedHandler(vw);
+			vw.getVehicle().addMessageListener(VehicleDelocalizedMessage.class, cdh);
 		}
 	}
 
@@ -346,7 +392,7 @@ public class GameManager {
 			return;
 		}
 		vw.changeSpeedAndAccel(SPEED_INCREMENT, ACCEL_INCREMENT);
-		vw.getVehicle().sendMessage(new SetSpeedMessage(vw.getSpeed().get(), vw.getAcceleration().get()));
+		vw.getVehicle().sendMessage(new SetSpeedMessage(vw.getSpeed().get(), vw.getAcceleration().get()), false);
 	}
 
 	private void changeLaneLeft(SocketMessageWithVehicle msgv) {
@@ -354,15 +400,15 @@ public class GameManager {
 		case (int) LEFTMOST_OFFSET:
 			return;
 		case (int) LEFTINNER_OFFSET:
-			msgv.myVehicle.getVehicle().sendMessage(new ChangeLaneMessage(LEFTMOST_OFFSET, TURN_SPEED, TURN_ACCEL));
+			msgv.myVehicle.getVehicle().sendMessage(new ChangeLaneMessage(LEFTMOST_OFFSET, TURN_SPEED, TURN_ACCEL), false);
 			msgv.myVehicle.setLaneOffset(LEFTMOST_OFFSET);
 			break;
 		case (int) RIGHTINNER_OFFSET:
-			msgv.myVehicle.getVehicle().sendMessage(new ChangeLaneMessage(LEFTINNER_OFFSET, TURN_SPEED, TURN_ACCEL));
+			msgv.myVehicle.getVehicle().sendMessage(new ChangeLaneMessage(LEFTINNER_OFFSET, TURN_SPEED, TURN_ACCEL), false);
 			msgv.myVehicle.setLaneOffset(LEFTINNER_OFFSET);
 			break;
 		case (int) RIGHTMOST_OFFSET:
-			msgv.myVehicle.getVehicle().sendMessage(new ChangeLaneMessage(RIGHTINNER_OFFSET, TURN_SPEED, TURN_ACCEL));
+			msgv.myVehicle.getVehicle().sendMessage(new ChangeLaneMessage(RIGHTINNER_OFFSET, TURN_SPEED, TURN_ACCEL), false);
 			msgv.myVehicle.setLaneOffset(RIGHTINNER_OFFSET);
 			break;
 		default:
@@ -375,15 +421,15 @@ public class GameManager {
 		case (int) RIGHTMOST_OFFSET:
 			return;
 		case (int) RIGHTINNER_OFFSET:
-			msgv.myVehicle.getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, TURN_SPEED, TURN_ACCEL));
+			msgv.myVehicle.getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, TURN_SPEED, TURN_ACCEL), false);
 			msgv.myVehicle.setLaneOffset(RIGHTMOST_OFFSET);
 			break;
 		case (int) LEFTINNER_OFFSET:
-			msgv.myVehicle.getVehicle().sendMessage(new ChangeLaneMessage(RIGHTINNER_OFFSET, TURN_SPEED, TURN_ACCEL));
+			msgv.myVehicle.getVehicle().sendMessage(new ChangeLaneMessage(RIGHTINNER_OFFSET, TURN_SPEED, TURN_ACCEL), false);
 			msgv.myVehicle.setLaneOffset(RIGHTINNER_OFFSET);
 			break;
 		case (int) LEFTMOST_OFFSET:
-			msgv.myVehicle.getVehicle().sendMessage(new ChangeLaneMessage(LEFTINNER_OFFSET, TURN_SPEED, TURN_ACCEL));
+			msgv.myVehicle.getVehicle().sendMessage(new ChangeLaneMessage(LEFTINNER_OFFSET, TURN_SPEED, TURN_ACCEL), false);
 			msgv.myVehicle.setLaneOffset(LEFTINNER_OFFSET);
 			break;
 		default:
@@ -393,6 +439,29 @@ public class GameManager {
 	
 	private void turnAround(SocketMessageWithVehicle msgv) {
 		msgv.myVehicle.getVehicle().sendMessage(new TurnMessage(3, 0));
+	}
+	
+	/**
+	 * Find the unique pieces in the track, build hashmap of uniqueId -> mapIndex
+	 * Used later for if we parse a unique piece, we know where the vehicle is for sure
+	 */
+	private void generateUniqueMap() {
+		uniquePieceIdMap = new HashMap<Integer, Integer>();
+		for (int i = 0; i < roadMapList.size(); i++) {
+			int pieceId = roadMapList.get(i).getPieceId();
+			boolean foundAgain = false;
+			for (int j = 0; j < roadMapList.size(); j++) {
+				if (j == i) {
+					continue;
+				}
+				if (roadMapList.get(j).getPieceId() == pieceId) {
+					foundAgain = true;
+				}
+			}
+			if (!foundAgain) {
+				uniquePieceIdMap.put(pieceId, i);
+			}
+		}
 	}
 
 	/**
@@ -409,10 +478,51 @@ public class GameManager {
 		if (it.getLaneOffset() != tagger.getLaneOffset()) { // not same lane
 			return;
 		}
-		
+		int itPieceIndex = it.getPieceIndex().get();
+		int tagPieceIndex = tagger.getPieceIndex().get();
+		int stop = tagPieceIndex;
+		Roadpiece piece = roadMapList.get(tagPieceIndex);
+		if (tagger.getBearing().get()) { // Forward tag trace
+			do {
+				if (tagPieceIndex == itPieceIndex) { // TAG
+					tagOccured();
+					break;
+				} else if (roadMapList.get(tagPieceIndex).isCurved()) {
+					break;
+				} else {
+					if (tagPieceIndex == roadMapList.size() - 1) {
+						tagPieceIndex = 0;
+					} else {
+						tagPieceIndex++;
+					}
+				}
+			} while (tagPieceIndex != stop);
+		} else { // Back tag trace
+			do {
+				if (tagPieceIndex == itPieceIndex) { //TAG
+					tagOccured();
+					break;
+				} else if (roadMapList.get(tagPieceIndex).isCurved()) {
+					break;
+				} else {
+					if (tagPieceIndex == 0) {
+						tagPieceIndex = (roadMapList.size() - 1);
+					} else {
+						tagPieceIndex--;
+					}
+				}
+			} while (tagPieceIndex != stop);
+		}
 	}
 	
-	private void blockAttempt(SocketMessageWithVehicle msgv) {
+	/**
+	 * TODO finish me
+	 */
+	private void tagOccured() {
+		System.out.println("TAG!");
+	}
+	
+	private void blockAttempt(SocketMessageWithVehicle msgv) { //TODO finish me
 		if (msgv.myVehicle != it) {
 			return; //taggers can't block
 		}
@@ -451,6 +561,11 @@ public class GameManager {
 		}
 	}
 	
+	/**
+	 * This handles updating the car's bearing and taking advantage of any unique
+	 * track pieces to increase the chances we are actually correct about the
+	 * vehicle's position on the track
+	 */
 	private class CarLocalizationHandler implements MessageListener<LocalizationPositionUpdateMessage> {
 		private VehicleWrapper myVehicle;
 		
@@ -460,11 +575,30 @@ public class GameManager {
 		
 		@Override
 		public void messageReceived(LocalizationPositionUpdateMessage m) {
-			System.out.println("roadpiece:" + m.getRoadPieceId());
 			myVehicle.setLaneOffset(m.getOffsetFromRoadCenter());
+			if (uniquePieceIdMap.containsKey(m.getRoadPieceId())) { //We know for sure where we are
+				myVehicle.getPieceIndex().set(uniquePieceIdMap.get(m.getRoadPieceId()));
+			}
+			//Logic to figure out if the car's bearing is flipped
+			if ((!m.isParsedReverse() && roadMapList.get(myVehicle.getPieceIndex().get()).isReversed())
+					|| (m.isParsedReverse() && !(roadMapList.get(myVehicle.getPieceIndex().get()).isReversed()))) {
+				myVehicle.getBearing().set(false);
+			} else {
+				myVehicle.getBearing().set(true);
+			}
+			// Debug position information TODO comment or remove
+			System.out.println("####");
+			System.out.println("Bearing: " + myVehicle.getBearing().get());
+			System.out.println("Roadpiece: " + roadMapList.get(myVehicle.getPieceIndex().get()).getPieceId()
+					+ ", List index: " + myVehicle.getPieceIndex().get());
+			System.out.println("####");
 		}
 	}
 	
+	/**
+	 * This handles updating the piece the car is currently on using our guesses of
+	 * where it currently is and what its current bearing is
+	 */
 	private class CarTransitionHandler implements MessageListener<LocalizationTransitionUpdateMessage> {
 		private VehicleWrapper myVehicle;
 		
@@ -474,7 +608,19 @@ public class GameManager {
 		
 		@Override
 		public void messageReceived(LocalizationTransitionUpdateMessage m) { //transition bar
-			myVehicle.setLaneOffset(m.getOffsetFromRoadCenter());
+			if (myVehicle.getBearing().get()) { //Forward advance
+				if (myVehicle.getPieceIndex().get() == roadMapList.size() - 1) {
+					myVehicle.getPieceIndex().set(0);
+				} else {
+					myVehicle.getPieceIndex().incrementAndGet();
+				}
+			} else { //Backwards
+				if (myVehicle.getPieceIndex().get() == 0) {
+					myVehicle.getPieceIndex().set(roadMapList.size() - 1);
+				} else {
+					myVehicle.getPieceIndex().decrementAndGet();
+				}
+			}
 		}
 	}
 	
@@ -487,7 +633,7 @@ public class GameManager {
 		
 		@Override
 		public void messageReceived(LocalizationIntersectionUpdateMessage m) {
-
+		
 		}
 	}
 	
@@ -517,7 +663,7 @@ public class GameManager {
 					continue;
 				}
 				vw.changeSpeedAndAccel(SPEED_SLOWDOWN, ACCEL_SLOWDOWN);
-				vw.getVehicle().sendMessage(new SetSpeedMessage(vw.getSpeed().get(), vw.getAcceleration().get()));
+				vw.getVehicle().sendMessage(new SetSpeedMessage(vw.getSpeed().get(), vw.getAcceleration().get()), false);
 			}
 		}
 	}
