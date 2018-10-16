@@ -43,7 +43,6 @@ public class GameManager {
 	private Roadmap roadMap; //the physical roadmap, created by scanning the track
 	private List<Roadpiece> roadMapList;
 	private volatile ArrayBlockingQueue<SocketMessageWithVehicle> serverClientQueue; //Client populates this with cmds
-	private volatile ArrayBlockingQueue<Message> serverCarQueue; //Anki cars/SDK populates this with responses
 	private Timer slowTimer; //schedules car slowsdowns
 	private Timer scoreTimer; //schedules score increments for 'it'
 	private Timer blockCooldown; //keeps track of when the last successful block was applied
@@ -51,7 +50,7 @@ public class GameManager {
 	private VehicleWrapper it; //The vehicle that is 'it'
 	private VehicleWrapper tagger; //The vehicle that is 'tagger'
 	private volatile AtomicBoolean blocking; //Keeps track of whether 'it' is blocking
-	private int startPieceListIndex;
+	private volatile AtomicBoolean swapping; //If true, disallow commands from being processed to let new 'it' move
 	private HashMap<Integer, Integer> uniquePieceIdMap; //Unique pieces IDs found on track -> index on map
 
 	public GameManager() {
@@ -59,9 +58,11 @@ public class GameManager {
 		connectedClients = new ConcurrentHashMap<Integer, ClientManager>();
 		readyCount = new AtomicInteger(0);
 		serverClientQueue = new ArrayBlockingQueue<SocketMessageWithVehicle>(MainClass.MAX_QUEUE_SIZE, false);
-		serverCarQueue = new ArrayBlockingQueue<Message>(MainClass.MAX_QUEUE_SIZE, false);
 		clientOverflowStatus = new AtomicBoolean(false);
 		blocking = new AtomicBoolean(false);
+		swapping = new AtomicBoolean(false);
+		blockDuration = new Timer();
+		blockCooldown = new Timer();
 	}
 
 	public void play() {
@@ -79,12 +80,12 @@ public class GameManager {
 	 */
 	public void mainGameLoop() {
 		try {
+			it = vehicles.get(0);
+			tagger = vehicles.get(1);
 			//Set lights for start of game
 			startingLights();
 			
 			//Notify clients of roles and that the game has begun
-			it = vehicles.get(0);
-			tagger = vehicles.get(1);
 			connectedClients.get(vehicles.get(0).getClientManagerId()).sendCmd(1010, ""); //it
 			connectedClients.get(vehicles.get(1).getClientManagerId()).sendCmd(1011, ""); //tagger
 			for (ClientManager m : connectedClients.values()) {
@@ -105,11 +106,11 @@ public class GameManager {
 					System.out.println("Overflow in client-server queue. Ending game.");
 					return;
 				}
-				while (!serverCarQueue.isEmpty()) {
-					Message m = serverCarQueue.poll();
-				}
 				while (!serverClientQueue.isEmpty()) {
 					SocketMessageWithVehicle msgv = serverClientQueue.poll();
+					if (swapping.get() && msgv.myVehicle == tagger) { //New 'it' is being given time to move away
+						continue;
+					}
 					switch (msgv.msg.cmd) {
 					case 1005:
 						increaseCarSpeed(msgv);
@@ -203,6 +204,10 @@ public class GameManager {
 			RoadmapScanner roadMapScannerTwo = new RoadmapScanner(vehicles.get(1).getVehicle());
 			roadMapScannerOne.startScanning();
 			Thread.sleep(10);
+			vehicles.get(0).getVehicle().sendMessage(new SetOffsetFromRoadCenterMessage(0));
+			Thread.sleep(10);
+			vehicles.get(0).getVehicle().sendMessage(new ChangeLaneMessage(LEFTMOST_OFFSET, 50, 1000));
+			Thread.sleep(10);
 			vehicles.get(0).getVehicle().sendMessage(new ChangeLaneMessage(LEFTMOST_OFFSET, 50, 1000));
 			Thread.sleep(10);
 			vehicles.get(0).getVehicle().sendMessage(new ChangeLaneMessage(LEFTMOST_OFFSET, 50, 1000));
@@ -215,6 +220,8 @@ public class GameManager {
 				return false;
 			}
 			roadMapScannerTwo.startScanning();
+			Thread.sleep(10);
+			vehicles.get(1).getVehicle().sendMessage(new SetOffsetFromRoadCenterMessage(0));
 			Thread.sleep(10);
 			vehicles.get(1).getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, 50, 1000));
 			Thread.sleep(10);
@@ -258,10 +265,9 @@ public class GameManager {
 						System.out.println("Only one start piece is allowed. Exiting.");
 						return false;
 					}
-					startPieceListIndex = i;
 					hasStart = true;
 				}
-				System.out.print(p.getPieceId() + ", reversed: " + p.isReversed() + ":::");
+				System.out.print(p.getPieceId() + ", reversed " + p.isReversed() + ":::");
 			
 			}
 			if (!hasStart) {
@@ -342,7 +348,7 @@ public class GameManager {
 		LightsPatternMessage lpm = new LightsPatternMessage();
 		lpm.add(itLightEngine);
 		lpm.add(itLightFront);
-		vehicles.get(0).getVehicle().sendMessage(lpm);
+		it.getVehicle().sendMessage(lpm);
 		lpm = new LightsPatternMessage();
 		lpm.add(tagLightEngine);
 		lpm.add(tagLightFront);
@@ -351,7 +357,7 @@ public class GameManager {
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
-		vehicles.get(1).getVehicle().sendMessage(lpm);
+		tagger.getVehicle().sendMessage(lpm);
 	}
 	
 	/**
@@ -471,7 +477,7 @@ public class GameManager {
 	 * 
 	 * @param msgv
 	 */
-	private void tagAttempt(SocketMessageWithVehicle msgv) {
+	private void tagAttempt(SocketMessageWithVehicle msgv) throws ServerException{
 		if (msgv.myVehicle == it) {
 			return; //it can't tag itself
 		}
@@ -481,7 +487,6 @@ public class GameManager {
 		int itPieceIndex = it.getPieceIndex().get();
 		int tagPieceIndex = tagger.getPieceIndex().get();
 		int stop = tagPieceIndex;
-		Roadpiece piece = roadMapList.get(tagPieceIndex);
 		if (tagger.getBearing().get()) { // Forward tag trace
 			do {
 				if (tagPieceIndex == itPieceIndex) { // TAG
@@ -514,12 +519,45 @@ public class GameManager {
 			} while (tagPieceIndex != stop);
 		}
 	}
-	
+
 	/**
-	 * TODO finish me
+	 * A successful tag occurred. Notify clients, increment score, swap roles, reset
+	 * timers, and give the new it a few seconds to get away, reset blocking statuses
+	 * @throws ServerException 
 	 */
-	private void tagOccured() {
-		System.out.println("TAG!");
+	private void tagOccured() throws ServerException {
+		long SWAP_DELAY = 2000; // ms
+		swapping.set(true);
+		Timer swapTimer = new Timer();
+		swapTimer.schedule(new TimerTask() { // Allow the tagger to move in a few seconds
+			@Override
+			public void run() {
+				swapping.set(false);
+			}
+		}, SWAP_DELAY);
+		tagger.incScore(1);
+		connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, "1;0"); //tell tagger their score is up
+		connectedClients.get(it.getClientManagerId()).sendCmd(1016, "0;1"); //tell it their opponent's score is up
+		try {
+			scoreTimer.cancel(); // Stop timer, restart it and give a few seconds to account for the swap delay
+		} catch (IllegalStateException ie) {}
+		scoreTimer = new Timer();
+		scoreTimer.scheduleAtFixedRate(new IncrementScoreTask(), SWAP_DELAY, 30000);
+		try {
+			blockDuration.cancel();
+		} catch (IllegalStateException ie) {}
+		blockDuration = new Timer();
+		try {
+			blockCooldown.cancel();
+		} catch (IllegalStateException ie) {}
+		blockCooldown = new Timer();
+		blocking.set(false);
+		connectedClients.get(0).sendCmd(1012, ""); //swap roles
+		connectedClients.get(1).sendCmd(1012, "");
+		VehicleWrapper temp = it;
+		it = tagger;
+		tagger = temp;
+		startingLights(); //Swap lights
 	}
 	
 	private void blockAttempt(SocketMessageWithVehicle msgv) { //TODO finish me
@@ -586,12 +624,10 @@ public class GameManager {
 			} else {
 				myVehicle.getBearing().set(true);
 			}
-			// Debug position information TODO comment or remove
-			System.out.println("####");
-			System.out.println("Bearing: " + myVehicle.getBearing().get());
-			System.out.println("Roadpiece: " + roadMapList.get(myVehicle.getPieceIndex().get()).getPieceId()
-					+ ", List index: " + myVehicle.getPieceIndex().get());
-			System.out.println("####");
+			// Debug position information leave as comment or remove
+			//System.out.println("Bearing: " + myVehicle.getBearing().get());
+			//System.out.println("Roadpiece: " + roadMapList.get(myVehicle.getPieceIndex().get()).getPieceId()
+			//		+ ", List index: " + myVehicle.getPieceIndex().get());
 		}
 	}
 	
@@ -641,10 +677,16 @@ public class GameManager {
 
 		/**
 		 * Increments 'its' score by 2 every 30 seconds, this should get restarted if a
-		 * new player becomes 'it'
+		 * new player becomes 'it'. Notifies the client of their new score
 		 */
 		@Override
-		public void run() {
+		public void run(){
+			try {
+				connectedClients.get(it.getClientManagerId()).sendCmd(1016, "2;0");
+				connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, "0;2");
+			} catch (ServerException e) {
+				e.printStackTrace(); //I would like to throw instead...
+			}
 			it.incScore(2);
 		}
 	}

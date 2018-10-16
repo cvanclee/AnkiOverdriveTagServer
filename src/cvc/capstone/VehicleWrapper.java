@@ -11,7 +11,7 @@ public class VehicleWrapper {
 	private volatile AtomicInteger speed;
 	private volatile AtomicInteger accel;
 	private volatile float laneOffset; // no AtomicFloat. synchronize all access instead
-	private volatile AtomicInteger score; //Game score
+	private volatile int score; //Game score
 	private float[] offsets = { GameManager.LEFTMOST_OFFSET, GameManager.LEFTINNER_OFFSET,
 			GameManager.RIGHTINNER_OFFSET, GameManager.RIGHTMOST_OFFSET };
 	private volatile AtomicBoolean bearing; //true for starting direction, false for the other
@@ -22,9 +22,17 @@ public class VehicleWrapper {
 		this.clientManagerId = clientManagerId;
 		speed = new AtomicInteger(GameManager.MIN_SPEED);
 		accel = new AtomicInteger(GameManager.MIN_ACCEL);
-		score = new AtomicInteger(0);
+		score = 0;
 		bearing = new AtomicBoolean(true);
 		pieceIndex = new AtomicInteger(-1);
+	}
+	
+	public synchronized void incScore(int inc) {
+		score = score + inc;
+	}
+	
+	public int getScore() { 
+		return score;
 	}
 	
 	public Vehicle getVehicle() {
@@ -56,10 +64,6 @@ public class VehicleWrapper {
 	
 	public AtomicBoolean getBearing() {
 		return bearing;
-	}
-	
-	public synchronized void incScore(int inc) {
-		score.set(score.get() + inc);
 	}
 	
 	public AtomicInteger getSpeed() {
