@@ -22,10 +22,10 @@ import de.adesso.anki.roadmap.roadpieces.Roadpiece;
 
 public class GameManager {
 
-	public static final int SPEED_INCREMENT = 10;
-	public static final int ACCEL_INCREMENT = 10;
-	public static final int MAX_SPEED = 1400;
-	public static final int MAX_ACCEL = 13000;
+	private static final int SPEED_INCREMENT = 10;
+	private static final int ACCEL_INCREMENT = 10;
+	private static final int MAX_SPEED = 1400;
+	private static final int MAX_ACCEL = 13000;
 	public static final int MIN_SPEED = 400; //default 400
 	public static final int MIN_ACCEL = 12000;
 	public static final float LEFTMOST_OFFSET = -68.0f;
@@ -35,13 +35,14 @@ public class GameManager {
 	private static final int TURN_SPEED = 500;
 	private static final int TURN_ACCEL = 1000;
 	private static final int SLOWDOWN_OCCURENCE = 500; //how often the cars get a slowdown command (ms)
+	private static final int SCAN_TRACK_TIMEOUT = 100000; //scanTrack() will return false if it takes too long
 	private AnkiConnector anki;
-	private volatile List<VehicleWrapper> vehicles;
+	protected volatile List<VehicleWrapper> vehicles;
 	private volatile ConcurrentHashMap<Integer, ClientManager> connectedClients;
 	private volatile AtomicInteger readyCount; //number of clients that are ready
 	private volatile AtomicBoolean clientOverflowStatus; //true if command queue overflows (really bad)
-	private Roadmap roadMap; //the physical roadmap, created by scanning the track
-	private List<Roadpiece> roadMapList;
+	protected Roadmap roadMap; //the physical roadmap, created by scanning the track
+	protected List<Roadpiece> roadMapList;
 	private volatile ArrayBlockingQueue<SocketMessageWithVehicle> serverClientQueue; //Client populates this with cmds
 	private Timer slowTimer; //schedules car slowsdowns
 	private Timer scoreTimer; //schedules score increments for 'it'
@@ -51,8 +52,10 @@ public class GameManager {
 	private VehicleWrapper tagger; //The vehicle that is 'tagger'
 	private volatile AtomicBoolean blocking; //Keeps track of whether 'it' is blocking
 	private volatile AtomicBoolean swapping; //If true, disallow commands from being processed to let new 'it' move
-	private HashMap<Integer, Integer> uniquePieceIdMap; //Unique pieces IDs found on track -> index on map
-
+	protected HashMap<Integer, Integer> uniquePieceIdMap; //Unique pieces IDs found on track -> index on map
+	protected RoadmapScanner roadMapScannerOne;
+	protected RoadmapScanner roadMapScannerTwo;
+	
 	public GameManager() {
 		vehicles = new ArrayList<VehicleWrapper>();
 		connectedClients = new ConcurrentHashMap<Integer, ClientManager>();
@@ -67,6 +70,8 @@ public class GameManager {
 
 	public void play() {
 		waitForPlayers();
+		roadMapScannerOne = new RoadmapScanner(vehicles.get(0).getVehicle());
+		roadMapScannerTwo = new RoadmapScanner(vehicles.get(1).getVehicle());
 		if (!scanTrack()) {
 			System.out.println("Failed to properly scan track. Exiting.");
 			return;
@@ -98,9 +103,8 @@ public class GameManager {
 			scoreTimer = new Timer();
 			scoreTimer.scheduleAtFixedRate(new IncrementScoreTask(), 30000, 30000); //Give a 5 second delay for fairness
 
-			// Keep reading the command queue that is populated by the client managers, and
-			// the car queue that is populated from the physical Anki cars until end
-			// condition is reached.
+			// Keep reading the command queue that is populated by the client managers until
+			// end condition is reached
 			while (true) {
 				if (clientOverflowStatus.get()) { // end condition
 					System.out.println("Overflow in client-server queue. Ending game.");
@@ -199,9 +203,8 @@ public class GameManager {
 	 */
 	public boolean scanTrack() {
 		System.out.println("Scanning track...");
+		int time = 0;
 		try {
-			RoadmapScanner roadMapScannerOne = new RoadmapScanner(vehicles.get(0).getVehicle());
-			RoadmapScanner roadMapScannerTwo = new RoadmapScanner(vehicles.get(1).getVehicle());
 			roadMapScannerOne.startScanning();
 			Thread.sleep(10);
 			vehicles.get(0).getVehicle().sendMessage(new SetOffsetFromRoadCenterMessage(0));
@@ -228,8 +231,9 @@ public class GameManager {
 			vehicles.get(1).getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, 50, 1000));
 			Thread.sleep(10);
 			vehicles.get(1).getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, 50, 1000));
-			while (!roadMapScannerOne.isComplete()) {
+			while (!roadMapScannerOne.isComplete() && time < SCAN_TRACK_TIMEOUT) {
 				try {
+					time = time + 2;
 					Thread.sleep(2);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
@@ -237,8 +241,9 @@ public class GameManager {
 				}
 			}
 			vehicles.get(0).getVehicle().sendMessage(new SetSpeedMessage(0, 12500));
-			while (!roadMapScannerTwo.isComplete()) {
+			while (!roadMapScannerTwo.isComplete() && time < SCAN_TRACK_TIMEOUT) {
 				try {
+					time = time + 2;
 					Thread.sleep(2);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
@@ -246,6 +251,10 @@ public class GameManager {
 				}
 			}
 			vehicles.get(1).getVehicle().sendMessage(new SetSpeedMessage(0, 12500));
+			if (time >= SCAN_TRACK_TIMEOUT) {
+				System.out.println("Timeout reached while scanning. Exiting.");
+				return false;
+			}
 			roadMap = roadMapScannerOne.getRoadmap();
 			Roadmap tempMap = roadMapScannerTwo.getRoadmap();
 			vehicles.get(0).getVehicle().removeAllListeners();
@@ -272,6 +281,7 @@ public class GameManager {
 			}
 			if (!hasStart) {
 				System.out.println("No start piece detected. Exiting.");
+				return false;
 			}
 			System.out.println("\n------");
 			System.out.println("Unique piece IDs and position in map:");
@@ -292,7 +302,7 @@ public class GameManager {
 	 * 
 	 * @return true if nodejs server is connected
 	 */
-	private boolean launchAnki() {
+	public boolean launchAnki() {
 		try {
 			anki = new AnkiConnector(MainClass.NODE_JS_SERVER_NAME, MainClass.NODE_JS_SERVER_PORT);
 		} catch (Exception e) {
@@ -365,7 +375,7 @@ public class GameManager {
 	 * 
 	 * @param vehicles vehicles to attach the listeners to
 	 */
-	private void attachHandles(List<VehicleWrapper> vehicles) {
+	protected void attachHandles(List<VehicleWrapper> vehicles) {
 		for (VehicleWrapper vw : vehicles) {
 			CarLocalizationHandler cdl = new CarLocalizationHandler(vw);
 			CarTransitionHandler cth = new CarTransitionHandler(vw);
@@ -376,7 +386,7 @@ public class GameManager {
 		}
 	}
 	
-	private void attachDelocalizationHandle(List<VehicleWrapper> vehicles) {
+	protected void attachDelocalizationHandle(List<VehicleWrapper> vehicles) {
 		for (VehicleWrapper vw : vehicles) {
 			CarDelocalizedHandler cdh = new CarDelocalizedHandler(vw);
 			vw.getVehicle().addMessageListener(VehicleDelocalizedMessage.class, cdh);
@@ -451,7 +461,7 @@ public class GameManager {
 	 * Find the unique pieces in the track, build hashmap of uniqueId -> mapIndex
 	 * Used later for if we parse a unique piece, we know where the vehicle is for sure
 	 */
-	private void generateUniqueMap() {
+	protected void generateUniqueMap() {
 		uniquePieceIdMap = new HashMap<Integer, Integer>();
 		for (int i = 0; i < roadMapList.size(); i++) {
 			int pieceId = roadMapList.get(i).getPieceId();
@@ -708,5 +718,20 @@ public class GameManager {
 				vw.getVehicle().sendMessage(new SetSpeedMessage(vw.getSpeed().get(), vw.getAcceleration().get()), false);
 			}
 		}
+	}
+	
+	/**
+	 * TESTING ONLY
+	 */
+	public void setAnkiTESTONLY(AnkiConnector anki) {
+		this.anki = anki;
+	}
+	
+	/**
+	 * TESTING ONLY
+	 */
+	public void setRoadmapScannerTESTONLY(RoadmapScanner s1, RoadmapScanner s2) {
+		this.roadMapScannerOne = s1;
+		this.roadMapScannerTwo = s2;
 	}
 }

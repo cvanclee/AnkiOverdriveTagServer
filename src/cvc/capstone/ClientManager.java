@@ -13,7 +13,7 @@ public class ClientManager extends Thread {
 	private final Socket clientSocket;
 	private final GameManager myManager;
 	private String myUUID;
-	private boolean ready;
+	private volatile AtomicBoolean ready;
 	private int myId;
 	private OutputStream os;
 	private ObjectOutputStream out;
@@ -27,17 +27,15 @@ public class ClientManager extends Thread {
 		this.myManager = myManager;
 		this.myId = myId;
 		this.myVehicle = myVehicle;
-		this.isGameReady = new AtomicBoolean(false);
+		this.isGameReady = new AtomicBoolean(false); //game manager is in main game loop
+		this.ready = new AtomicBoolean(false); //is client ready
 		myUUID = "";
 		try {
 			clientSocket.setSoTimeout(2000);
 			os = clientSocket.getOutputStream();
 			out = new ObjectOutputStream(os);
 			in = new ObjectInputStream(clientSocket.getInputStream());
-		} catch (SocketException e) {
-			e.printStackTrace();
-			throw new ServerException(e);
-		} catch (IOException e) {
+		} catch (Exception e) {
 			e.printStackTrace();
 			throw new ServerException(e);
 		}
@@ -79,7 +77,7 @@ public class ClientManager extends Thread {
 	 * commands. Then loop until game manager notifies the game is over, accepting
 	 * client commands
 	 */
-	private void gameLoopCommunication() {
+	protected void gameLoopCommunication() {
 		try {
 			while (!isInterrupted() && !isGameReady.get()) {
 				try {
@@ -106,6 +104,7 @@ public class ClientManager extends Thread {
 					myManager.getServerClientQueue().add(msgv);
 				} catch (IllegalStateException e) { // BAD. Notify server queue is over capacity
 					myManager.getClientOverflowStatus().set(true);
+					return;
 				}
 			}
 		} catch (Exception e) {
@@ -122,8 +121,8 @@ public class ClientManager extends Thread {
 	 * 
 	 * @throws ServerException
 	 */
-	private void waitForNewClient() throws ServerException {
-		while (!isInterrupted() && !ready) {
+	protected void waitForNewClient() throws ServerException {
+		while (!isInterrupted() && !ready.get()) {
 			try {
 				SocketMessage msg = (SocketMessage) in.readObject();
 				if (msg.cmd == 1000) {
@@ -131,8 +130,8 @@ public class ClientManager extends Thread {
 							"New client attempting to connect " + clientSocket.getRemoteSocketAddress().toString());
 					myUUID = msg.UUID;
 					sendCmd(1009, myVehicle.getVehicle().toString());
-				} else if (msg.cmd == 1001 && msg.UUID.equals(myUUID) && !ready) {
-					ready = true;
+				} else if (msg.cmd == 1001 && msg.UUID.equals(myUUID) && !ready.get()) {
+					ready.set(true);
 					myManager.getReadyCount().incrementAndGet();
 				} else if (msg.cmd == 1002 && msg.UUID.equals(myUUID)) {
 					clientLeftLobby();
@@ -156,10 +155,10 @@ public class ClientManager extends Thread {
 	private void clientLeftLobby() {
 		System.out.println("A client disconnected");
 		myUUID = "";
-		if (ready) {
+		if (ready.get()) {
 			myManager.getReadyCount().decrementAndGet();
 		}
-		ready = false;
+		ready.set(false);;
 		myManager.addVehicle(myVehicle);
 		myManager.getConnectedClients().remove(myId);
 		try {
@@ -192,5 +191,9 @@ public class ClientManager extends Thread {
 
 	public void setGameReady(boolean gr) {
 		isGameReady.set(gr);
+	}
+	
+	public boolean isReady() {
+		return ready.get();
 	}
 }
