@@ -34,10 +34,12 @@ public class GameManager {
 	public static final float RIGHTMOST_OFFSET = 68.0f;
 	private static final int TURN_SPEED = 500;
 	private static final int TURN_ACCEL = 1000;
-	private static final int SLOWDOWN_OCCURENCE = 500; //how often the cars get a slowdown command (ms)
-	private static final int SCAN_TRACK_TIMEOUT = 100000; //scanTrack() will return false if it takes too long
+	private static final int SLOWDOWN_OCCURENCE = 1000; //how often the cars get a slowdown command (ms)
+	private static final int SCAN_TRACK_TIMEOUT = 80000; //scanTrack() will return false if it takes too long
 	private static final int TIME_INC_DURATION = 30000; //ms. how often TIME_INC will occur
-	private static final int WIN_SCORE = 75;
+	private static final int BLOCKING_DURATION = 3000; //how long 'it' will block for
+	private static final int BLOCKING_COOLDOWN = 10000; //how long before 'it' can use cooldown again.
+	private static final int WIN_SCORE = 50; //50 or so?
 	private static final String TAG_INC = "5"; //bonus for successful tag
 	private static final String TIME_INC = "10"; //bonus for staying 'it' for some time
 	private static final String TURN_DEC = "-1"; //punishment for turning
@@ -49,13 +51,14 @@ public class GameManager {
 	protected Roadmap roadMap; //the physical roadmap, created by scanning the track
 	protected List<Roadpiece> roadMapList;
 	private volatile ArrayBlockingQueue<SocketMessageWithVehicle> serverClientQueue; //Client populates this with cmds
-	private Timer slowTimer; //schedules car slowsdowns
-	private Timer scoreTimer; //schedules score increments for 'it'
-	private Timer blockCooldown; //keeps track of when the last successful block was applied
-	private Timer blockDuration; //keeps track of how much longer 'it' will be blocking
+	private volatile Timer slowTimer; //schedules car slowsdowns
+	private volatile Timer scoreTimer; //schedules score increments for 'it'
+	private volatile Timer blockCooldown; //keeps track of when the last successful block was applied
+	private volatile Timer blockDuration; //keeps track of how much longer 'it' will be blocking
 	private VehicleWrapper it; //The vehicle that is 'it'
 	private VehicleWrapper tagger; //The vehicle that is 'tagger'
 	private volatile AtomicBoolean blocking; //Keeps track of whether 'it' is blocking
+	private volatile AtomicBoolean blockOnCooldown; //Keeps track of whether block is on cooldown
 	private volatile AtomicBoolean swapping; //If true, disallow commands from being processed to let new 'it' move
 	protected HashMap<Integer, Integer> uniquePieceIdMap; //Unique pieces IDs found on track -> index on map
 	protected RoadmapScanner roadMapScannerOne;
@@ -69,6 +72,7 @@ public class GameManager {
 		clientOverflowStatus = new AtomicBoolean(false);
 		blocking = new AtomicBoolean(false);
 		swapping = new AtomicBoolean(false);
+		blockOnCooldown = new AtomicBoolean(false);
 		blockDuration = new Timer();
 		blockCooldown = new Timer();
 	}
@@ -79,6 +83,8 @@ public class GameManager {
 		roadMapScannerTwo = new RoadmapScanner(vehicles.get(1).getVehicle());
 		if (!scanTrack()) {
 			System.out.println("Failed to properly scan track. Exiting.");
+			killClientManagers();
+			ankiCleanup();
 			return;
 		}
 		mainGameLoop();
@@ -110,18 +116,34 @@ public class GameManager {
 			
 			// Keep reading the command queue that is populated by the client managers until
 			// end condition is reached
+			boolean offTrack = false;
 			while (true) {
 				if (clientOverflowStatus.get()) { // end condition
 					System.out.println("Overflow in client-server queue. Ending game.");
 					return;
 				}
-				if (it.getScore() >= WIN_SCORE) { //TODO //end condition
-					
-				} else if (tagger.getScore() >= WIN_SCORE) { //TODO end condition
-					
-				} //TODO add disconnection check end condition
+				if (it.getScore() >= WIN_SCORE) { //end condition
+					endGame(false);
+					return;
+				} else if (tagger.getScore() >= WIN_SCORE) { //end condition
+					endGame(false);
+					return;
+				} else if (connectedClients.get(it.getClientManagerId()).getLeftGame().get() 
+						|| connectedClients.get(tagger.getClientManagerId()).getLeftGame().get()) { //end condition
+					endGame(true);
+					return;
+				}
 				while (!serverClientQueue.isEmpty()) {
 					SocketMessageWithVehicle msgv = serverClientQueue.poll();
+					if (it.getOffTrack().get() || tagger.getOffTrack().get()) {
+						offTrack = true;
+						continue;
+					} else if (offTrack) { //Vehicles are back on track. Reset score timer
+						offTrack = false;
+						scoreTimer = new Timer();
+						scoreTimer.scheduleAtFixedRate(new IncrementScoreTask(), TIME_INC_DURATION, TIME_INC_DURATION);
+						System.out.println("Cars on track. Resuming game.");
+					}
 					if (swapping.get() && msgv.myVehicle == tagger) { //New 'it' is being given time to move away
 						continue;
 					}
@@ -214,7 +236,7 @@ public class GameManager {
 	 * 
 	 * @return true if a valid track is scanned
 	 */
-	public boolean scanTrack() {
+	public boolean scanTrack() { //TODO improve robustness
 		System.out.println("Scanning track...");
 		int time = 0;
 		try {
@@ -362,14 +384,13 @@ public class GameManager {
 	/**
 	 * Set lights for start of game and for role swaps
 	 */
-	private void startingLights() {
+	private synchronized void startingLights() {
 		LightConfig itLightFront = new LightConfig(LightChannel.FRONT_RED, LightEffect.STEADY, 15, 0, 1);
 		LightConfig itLightFront2 = new LightConfig(LightChannel.FRONT_GREEN, LightEffect.FLASH, 15, 0, 1);
 		LightsPatternMessage lpm = new LightsPatternMessage();
 		lpm.add(itLightFront);
 		lpm.add(itLightFront2);
-		it.getVehicle().sendMessage(lpm);
-		it.getVehicle().sendMessage(lpm); //Sometimes it gets ignored...
+		it.getVehicle().sendMessage(lpm, false);
 		lpm = new LightsPatternMessage();
 		LightConfig tagLightFront = new LightConfig(LightChannel.FRONT_GREEN, LightEffect.STEADY, 15, 0, 1);
 		LightConfig tagLightFront2 = new LightConfig(LightChannel.FRONT_RED, LightEffect.FLASH, 15, 0, 1);
@@ -380,8 +401,7 @@ public class GameManager {
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
-		tagger.getVehicle().sendMessage(lpm);
-		tagger.getVehicle().sendMessage(lpm); //Sometimes it gets ignored...
+		tagger.getVehicle().sendMessage(lpm, false);
 	}
 	
 	/**
@@ -469,7 +489,13 @@ public class GameManager {
 	
 	private void turnAround(SocketMessageWithVehicle msgv) throws ServerException {
 		msgv.myVehicle.getVehicle().sendMessage(new TurnMessage(3, 0));
+		msgv.myVehicle.incScore(Integer.parseInt(TURN_DEC));
 		connectedClients.get(msgv.myVehicle.getClientManagerId()).sendCmd(1016, TURN_DEC + ";0");
+		if (it != msgv.myVehicle) {
+			connectedClients.get(it.getClientManagerId()).sendCmd(1016, "0;" + TURN_DEC);
+		} else {
+			connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, "0;" + TURN_DEC);
+		}
 	}
 	
 	/**
@@ -508,6 +534,9 @@ public class GameManager {
 		}
 		if (it.getLaneOffset() != tagger.getLaneOffset()) { // not same lane
 			return;
+		}
+		if (blocking.get()) {
+			return; //can't tag while 'it' is blocking
 		}
 		int itPieceIndex = it.getPieceIndex().get();
 		int tagPieceIndex = tagger.getPieceIndex().get();
@@ -560,11 +589,13 @@ public class GameManager {
 				swapping.set(false);
 			}
 		}, SWAP_DELAY);
-		tagger.incScore(1);
+		tagger.incScore(Integer.parseInt(TAG_INC));
 		connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, TAG_INC + ";0"); //tell tagger their score is up
 		connectedClients.get(it.getClientManagerId()).sendCmd(1016, "0;" + TAG_INC); //tell it their opponent's score is up
+		
+		// Stop timers dependent on who is it/tagger and create new ones
 		try {
-			scoreTimer.cancel(); // Stop timer, restart it and give a few seconds to account for the swap delay
+			scoreTimer.cancel(); 
 		} catch (IllegalStateException ie) {}
 		scoreTimer = new Timer();
 		scoreTimer.scheduleAtFixedRate(new IncrementScoreTask(), TIME_INC_DURATION, TIME_INC_DURATION);
@@ -576,19 +607,127 @@ public class GameManager {
 			blockCooldown.cancel();
 		} catch (IllegalStateException ie) {}
 		blockCooldown = new Timer();
+		
+		//Reset state that is dependent on who is it/tagger
 		blocking.set(false);
-		connectedClients.get(0).sendCmd(1012, ""); //swap roles
-		connectedClients.get(1).sendCmd(1012, "");
+		blockOnCooldown.set(false);
+		
+		connectedClients.get(it.getClientManagerId()).sendCmd(1012, ""); //swap roles
+		connectedClients.get(tagger.getClientManagerId()).sendCmd(1012, "");
 		VehicleWrapper temp = it;
 		it = tagger;
 		tagger = temp;
 		startingLights(); //Swap lights
 	}
 	
-	private void blockAttempt(SocketMessageWithVehicle msgv) { //TODO finish me
+	/**
+	 * Notify clients the game is over
+	 * 
+	 * @param disconnected true if this was called because a client left the game
+	 */
+	private void endGame(boolean disconnected) {
+		try {
+			scoreTimer.cancel(); 
+		} catch (IllegalStateException ie) {}
+		try {
+			blockDuration.cancel();
+		} catch (IllegalStateException ie) {}
+		try {
+			blockCooldown.cancel();
+		} catch (IllegalStateException ie) {}
+		try {
+			slowTimer.cancel();
+		} catch (IllegalStateException ie) {}
+		ankiCleanup();
+		ClientManager itClient = connectedClients.get(it.getClientManagerId());
+		ClientManager taggerClient = connectedClients.get(tagger.getClientManagerId());
+		if (disconnected) {
+			String mainReason = "The game has ended because a player left. You win!";
+			if (itClient.getLeftGame().get()) {
+				try {
+					taggerClient.sendCmd(1013, mainReason);
+				} catch (ServerException e) {}
+			} else {
+				try {
+					itClient.sendCmd(1013, mainReason);
+				} catch (ServerException e) {}
+			}
+		}
+		String mainReason = "The game has ended because the max score was reached. ";
+		if (it.getScore() > tagger.getScore()) { //it wins
+			try {
+				itClient.sendCmd(1013, mainReason + "You win!");
+			} catch (ServerException e) {}
+			try {
+				taggerClient.sendCmd(1014, mainReason + "You lose.");
+			} catch (ServerException e) {}
+		} else if (it.getScore() < tagger.getScore()) { //tagger wins
+			try {
+				itClient.sendCmd(1013, "You lose.");
+			} catch (ServerException e) {}
+			try {
+				taggerClient.sendCmd(1014, "You win!");
+			} catch (ServerException e) {}
+		} else { //tie
+			try {
+				itClient.sendCmd(1015, mainReason + "You tied!?");
+			} catch (ServerException e) {}
+			try {
+				taggerClient.sendCmd(1015, mainReason + "You tied!?");
+			} catch (ServerException e) {}
+		}
+		try {
+			Thread.sleep(1000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		killClientManagers();
+	}
+	
+	private void killClientManagers() {
+		connectedClients.get(it.getClientManagerId()).interrupt();
+		connectedClients.get(tagger.getClientManagerId()).interrupt();
+		try {
+			Thread.sleep(1000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	private void ankiCleanup() {
+		it.getVehicle().disconnect();
+		tagger.getVehicle().disconnect();
+		anki.close();
+		try {
+			Thread.sleep(3000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	private void blockAttempt(SocketMessageWithVehicle msgv) {
 		if (msgv.myVehicle != it) {
 			return; //taggers can't block
 		}
+		if (blockOnCooldown.get()) {
+			return; //blocked too recently
+		}
+		try {
+			blockCooldown.cancel();
+		} catch (IllegalStateException e) {}
+		try {
+			blockDuration.cancel();
+		} catch (IllegalStateException e) {}
+		blockDuration = new Timer();
+		blockOnCooldown.set(true);
+		blocking.set(true);
+		LightsPatternMessage lpm = new LightsPatternMessage();
+		LightConfig itLightFront = new LightConfig(LightChannel.FRONT_RED, LightEffect.STROBE, 14, 0, 8);
+		//LightConfig itLightFront = new LightConfig(LightChannel.FRONT_RED, LightEffect.FLASH, 14, 1, 11);
+		lpm.add(itLightFront);
+		it.getVehicle().sendMessage(lpm);
+		it.getVehicle().sendMessage(lpm); //Sometimes it gets ignored...
+		blockDuration.schedule(new BlockDurationTask(), BLOCKING_DURATION);
 	}
 	
 	public ArrayBlockingQueue<SocketMessageWithVehicle> getServerClientQueue() {
@@ -619,8 +758,12 @@ public class GameManager {
 		}
 		
 		@Override
-		public void messageReceived(VehicleDelocalizedMessage m) { //TODO pause score timers till back on track
-			System.out.println("DELOCALIZED");
+		public void messageReceived(VehicleDelocalizedMessage m) {
+			System.out.println("DELOCALIZED. Game paused until car is detected back on track.");
+			try {
+				scoreTimer.cancel();
+			} catch (IllegalStateException e) {}
+			myVehicle.getOffTrack().set(true);
 		}
 	}
 	
@@ -639,6 +782,7 @@ public class GameManager {
 		@Override
 		public void messageReceived(LocalizationPositionUpdateMessage m) {
 			myVehicle.setLaneOffset(m.getOffsetFromRoadCenter());
+			myVehicle.getOffTrack().set(false);
 			if (uniquePieceIdMap.containsKey(m.getRoadPieceId())) { //We know for sure where we are
 				myVehicle.getPieceIndex().set(uniquePieceIdMap.get(m.getRoadPieceId()));
 			}
@@ -649,10 +793,6 @@ public class GameManager {
 			} else {
 				myVehicle.getBearing().set(true);
 			}
-			// Debug position information leave as comment or remove
-			//System.out.println("Bearing: " + myVehicle.getBearing().get());
-			//System.out.println("Roadpiece: " + roadMapList.get(myVehicle.getPieceIndex().get()).getPieceId()
-			//		+ ", List index: " + myVehicle.getPieceIndex().get());
 		}
 	}
 	
@@ -669,6 +809,7 @@ public class GameManager {
 		
 		@Override
 		public void messageReceived(LocalizationTransitionUpdateMessage m) { //transition bar
+			myVehicle.getOffTrack().set(false);
 			if (myVehicle.getBearing().get()) { //Forward advance
 				if (myVehicle.getPieceIndex().get() == roadMapList.size() - 1) {
 					myVehicle.getPieceIndex().set(0);
@@ -707,6 +848,7 @@ public class GameManager {
 		@Override
 		public void run(){
 			try {
+				it.incScore(Integer.parseInt(TIME_INC));
 				connectedClients.get(it.getClientManagerId()).sendCmd(1016, TIME_INC + ";0");
 				connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, "0;" + TIME_INC);
 			} catch (ServerException e) {
@@ -717,8 +859,8 @@ public class GameManager {
 	}
 	
 	private class SlowCarsTask extends TimerTask {
-		private static final int SPEED_SLOWDOWN = -20;
-		private static final int ACCEL_SLOWDOWN = -20;
+		private static final int SPEED_SLOWDOWN = -40;
+		private static final int ACCEL_SLOWDOWN = -40;
 
 		/**
 		 * Slow down the cars every s seconds by some -speed, -acceleration
@@ -732,7 +874,33 @@ public class GameManager {
 				vw.changeSpeedAndAccel(SPEED_SLOWDOWN, ACCEL_SLOWDOWN);
 				vw.getVehicle().sendMessage(new SetSpeedMessage(vw.getSpeed().get(), vw.getAcceleration().get()), false);
 			}
+			if (!blocking.get()) {
+				startingLights(); //Spam light updates, since they get ignored so often
+			}
 		}
+	}
+	
+	private class BlockCooldownTask extends TimerTask {
+
+		@Override
+		public void run() {
+			blockOnCooldown.set(false);
+		}
+	}
+	
+	private class BlockDurationTask extends TimerTask {
+		@Override
+		public void run() {
+			try {
+				blockCooldown.cancel();
+			} catch (IllegalStateException e) {}
+			blockCooldown = new Timer();
+			blockCooldown.schedule(new BlockCooldownTask(), BLOCKING_COOLDOWN);
+			blockOnCooldown.set(true);
+			blocking.set(false);
+			startingLights();
+		}
+		
 	}
 	
 	/**

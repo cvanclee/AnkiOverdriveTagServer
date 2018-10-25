@@ -10,7 +10,7 @@ import java.net.SocketTimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ClientManager extends Thread {
-	private final Socket clientSocket;
+	private Socket clientSocket;
 	private final GameManager myManager;
 	private String myUUID;
 	private volatile AtomicBoolean ready;
@@ -20,6 +20,7 @@ public class ClientManager extends Thread {
 	private ObjectInputStream in;
 	private VehicleWrapper myVehicle;
 	private volatile AtomicBoolean isGameReady;
+	private volatile AtomicBoolean leftGame;
 
 	public ClientManager(Socket clientSocket, GameManager myManager, int myId, VehicleWrapper myVehicle)
 			throws ServerException {
@@ -27,8 +28,9 @@ public class ClientManager extends Thread {
 		this.myManager = myManager;
 		this.myId = myId;
 		this.myVehicle = myVehicle;
-		this.isGameReady = new AtomicBoolean(false); //game manager is in main game loop
-		this.ready = new AtomicBoolean(false); //is client ready
+		isGameReady = new AtomicBoolean(false); //game manager is in main game loop
+		ready = new AtomicBoolean(false); //is client ready
+		leftGame = new AtomicBoolean(false);
 		myUUID = "";
 		try {
 			clientSocket.setSoTimeout(2000);
@@ -52,6 +54,9 @@ public class ClientManager extends Thread {
 		} catch (ServerException e) {
 			e.printStackTrace();
 		}
+		try {
+			clientSocket.close();
+		} catch (IOException e) {e.printStackTrace();}
 	}
 
 	/**
@@ -68,6 +73,12 @@ public class ClientManager extends Thread {
 			out.flush();
 			os.flush();
 		} catch (IOException e) {
+			try {
+				clientSocket.close();
+			} catch (IOException io) {
+				clientSocket = null;
+			}
+			leftGame.set(true);
 			throw new ServerException(e);
 		}
 	}
@@ -75,7 +86,7 @@ public class ClientManager extends Thread {
 	/**
 	 * Loop until game manager notifies it is ready to start accepting movement
 	 * commands. Then loop until game manager notifies the game is over, accepting
-	 * client commands
+	 * client commands 
 	 */
 	protected void gameLoopCommunication() {
 		try {
@@ -87,6 +98,14 @@ public class ClientManager extends Thread {
 					}
 				} catch (SocketTimeoutException e) {
 					continue;
+				} catch (Exception e) {
+					try {
+						clientSocket.close();
+					} catch (IOException io) {
+						clientSocket = null;
+					}
+					leftGame.set(true);
+					return;
 				}
 			}
 			if (isInterrupted()) {
@@ -98,6 +117,14 @@ public class ClientManager extends Thread {
 					msg = (SocketMessage) in.readObject();
 				} catch (SocketTimeoutException e) {
 					continue;
+				} catch (Exception e) {
+					try {
+						clientSocket.close();
+					} catch (IOException io) {
+						clientSocket = null;
+					}
+					leftGame.set(true);
+					return;
 				}
 				try {
 					SocketMessageWithVehicle msgv = new SocketMessageWithVehicle(msg, myVehicle);
@@ -108,7 +135,14 @@ public class ClientManager extends Thread {
 				}
 			}
 		} catch (Exception e) {
+			try {
+				clientSocket.close();
+			} catch (IOException io) {
+				clientSocket = null;
+			}
+			leftGame.set(true);
 			e.printStackTrace();
+			return;
 		}
 	}
 
@@ -135,6 +169,7 @@ public class ClientManager extends Thread {
 					myManager.getReadyCount().incrementAndGet();
 				} else if (msg.cmd == 1002 && msg.UUID.equals(myUUID)) {
 					clientLeftLobby();
+					return;
 				}
 				Thread.sleep(10);
 			} catch (InterruptedException e) {
@@ -146,6 +181,12 @@ public class ClientManager extends Thread {
 					;
 				}
 			} catch (Exception e) {
+				try {
+					clientSocket.close();
+				} catch (IOException ie) {
+					clientSocket = null;
+				}
+				leftGame.set(true);
 				e.printStackTrace();
 				return;
 			}
@@ -153,7 +194,7 @@ public class ClientManager extends Thread {
 	}
 	
 	private void clientLeftLobby() {
-		System.out.println("A client disconnected");
+		System.out.println("A client disconnected normally");
 		myUUID = "";
 		if (ready.get()) {
 			myManager.getReadyCount().decrementAndGet();
@@ -164,9 +205,9 @@ public class ClientManager extends Thread {
 		try {
 			clientSocket.close();
 		} catch (IOException e) {
-			;
+			clientSocket = null;;
 		}
-		interrupt();
+		leftGame.set(true);
 	}
 	
 	public String getUUID() {
@@ -195,5 +236,9 @@ public class ClientManager extends Thread {
 	
 	public boolean isReady() {
 		return ready.get();
+	}
+	
+	public AtomicBoolean getLeftGame() {
+		return leftGame;
 	}
 }

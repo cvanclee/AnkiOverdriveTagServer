@@ -16,6 +16,7 @@ public class VehicleWrapper {
 			GameManager.RIGHTINNER_OFFSET, GameManager.RIGHTMOST_OFFSET };
 	private volatile AtomicBoolean bearing; //true for starting direction, false for the other
 	private volatile AtomicInteger pieceIndex; //the index on the map this car is thought to be on
+	private volatile AtomicBoolean offTrack; //set to true if vehicle is delocalized
 
 	public VehicleWrapper(Vehicle vehicle, int clientManagerId) {
 		this.vehicle = vehicle;
@@ -25,6 +26,11 @@ public class VehicleWrapper {
 		score = 0;
 		bearing = new AtomicBoolean(true);
 		pieceIndex = new AtomicInteger(-1);
+		offTrack = new AtomicBoolean(false);
+	}
+	
+	public AtomicBoolean getOffTrack() {
+		return offTrack;
 	}
 	
 	public synchronized void incScore(int inc) {

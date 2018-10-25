@@ -25,11 +25,21 @@ public class MainClass {
 			throw new ServerException("Failed to read properties file");
 		}
 
-		GameManager gameManager = new GameManager();
-		if (!gameManager.setUp()) {
-			return;
+		while (true) {
+			System.out.println("-----------------");
+			GameManager gameManager = new GameManager();
+			if (!gameManager.setUp()) {
+				return;
+			}
+			gameManager.play();
+			System.out.println("Game has ended. Preparing new game.");
+			try {
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+				return;
+			}
 		}
-		gameManager.play();
 	}
 
 	public static boolean readProperties(String path) {
