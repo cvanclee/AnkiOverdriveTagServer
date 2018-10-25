@@ -26,7 +26,7 @@ public class GameManager {
 	private static final int ACCEL_INCREMENT = 10;
 	private static final int MAX_SPEED = 1400;
 	private static final int MAX_ACCEL = 13000;
-	public static final int MIN_SPEED = 400; //default 400
+	public static final int MIN_SPEED = 400;
 	public static final int MIN_ACCEL = 12000;
 	public static final float LEFTMOST_OFFSET = -68.0f;
 	public static final float LEFTINNER_OFFSET = -23.0f;
@@ -36,6 +36,11 @@ public class GameManager {
 	private static final int TURN_ACCEL = 1000;
 	private static final int SLOWDOWN_OCCURENCE = 500; //how often the cars get a slowdown command (ms)
 	private static final int SCAN_TRACK_TIMEOUT = 100000; //scanTrack() will return false if it takes too long
+	private static final int TIME_INC_DURATION = 30000; //ms. how often TIME_INC will occur
+	private static final int WIN_SCORE = 75;
+	private static final String TAG_INC = "5"; //bonus for successful tag
+	private static final String TIME_INC = "10"; //bonus for staying 'it' for some time
+	private static final String TURN_DEC = "-1"; //punishment for turning
 	private AnkiConnector anki;
 	protected volatile List<VehicleWrapper> vehicles;
 	private volatile ConcurrentHashMap<Integer, ClientManager> connectedClients;
@@ -101,8 +106,8 @@ public class GameManager {
 			slowTimer = new Timer();
 			slowTimer.scheduleAtFixedRate(new SlowCarsTask(), SLOWDOWN_OCCURENCE, SLOWDOWN_OCCURENCE);
 			scoreTimer = new Timer();
-			scoreTimer.scheduleAtFixedRate(new IncrementScoreTask(), 30000, 30000); //Give a 5 second delay for fairness
-
+			scoreTimer.scheduleAtFixedRate(new IncrementScoreTask(), TIME_INC_DURATION, TIME_INC_DURATION); 
+			
 			// Keep reading the command queue that is populated by the client managers until
 			// end condition is reached
 			while (true) {
@@ -110,6 +115,11 @@ public class GameManager {
 					System.out.println("Overflow in client-server queue. Ending game.");
 					return;
 				}
+				if (it.getScore() >= WIN_SCORE) { //TODO //end condition
+					
+				} else if (tagger.getScore() >= WIN_SCORE) { //TODO end condition
+					
+				} //TODO add disconnection check end condition
 				while (!serverClientQueue.isEmpty()) {
 					SocketMessageWithVehicle msgv = serverClientQueue.poll();
 					if (swapping.get() && msgv.myVehicle == tagger) { //New 'it' is being given time to move away
@@ -127,10 +137,13 @@ public class GameManager {
 						break;
 					case 1006:
 						turnAround(msgv);
+						break;
 					case 1007:
 						tagAttempt(msgv);
+						break;
 					case 1008:
 						blockAttempt(msgv);
+						break;
 					default:
 						;
 					}
@@ -206,15 +219,15 @@ public class GameManager {
 		int time = 0;
 		try {
 			roadMapScannerOne.startScanning();
-			Thread.sleep(10);
+			Thread.sleep(20);
 			vehicles.get(0).getVehicle().sendMessage(new SetOffsetFromRoadCenterMessage(0));
-			Thread.sleep(10);
+			Thread.sleep(20);
 			vehicles.get(0).getVehicle().sendMessage(new ChangeLaneMessage(LEFTMOST_OFFSET, 50, 1000));
-			Thread.sleep(10);
+			Thread.sleep(20);
 			vehicles.get(0).getVehicle().sendMessage(new ChangeLaneMessage(LEFTMOST_OFFSET, 50, 1000));
-			Thread.sleep(10);
+			Thread.sleep(20);
 			vehicles.get(0).getVehicle().sendMessage(new ChangeLaneMessage(LEFTMOST_OFFSET, 50, 1000));
-			Thread.sleep(10);
+			Thread.sleep(20);
 			vehicles.get(0).getVehicle().sendMessage(new ChangeLaneMessage(LEFTMOST_OFFSET, 50, 1000));
 			try {
 				Thread.sleep(500); // To try to get them not lined up, so I can change lanes
@@ -223,13 +236,13 @@ public class GameManager {
 				return false;
 			}
 			roadMapScannerTwo.startScanning();
-			Thread.sleep(10);
+			Thread.sleep(20);
 			vehicles.get(1).getVehicle().sendMessage(new SetOffsetFromRoadCenterMessage(0));
-			Thread.sleep(10);
+			Thread.sleep(20);
 			vehicles.get(1).getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, 50, 1000));
-			Thread.sleep(10);
+			Thread.sleep(20);
 			vehicles.get(1).getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, 50, 1000));
-			Thread.sleep(10);
+			Thread.sleep(20);
 			vehicles.get(1).getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, 50, 1000));
 			while (!roadMapScannerOne.isComplete() && time < SCAN_TRACK_TIMEOUT) {
 				try {
@@ -347,27 +360,28 @@ public class GameManager {
 	}
 	
 	/**
-	 * Set lights for start of game
-	 * TODO: Engine light is strobing instead of steady...
+	 * Set lights for start of game and for role swaps
 	 */
 	private void startingLights() {
-		LightConfig itLightEngine = new LightConfig(LightChannel.ENGINE_RED, LightEffect.STEADY, 100, 0, 0);
-		LightConfig itLightFront = new LightConfig(LightChannel.FRONT_RED, LightEffect.STEADY, 100, 0, 0);
-		LightConfig tagLightEngine = new LightConfig(LightChannel.ENGINE_GREEN, LightEffect.STEADY, 100, 0, 0);
-		LightConfig tagLightFront = new LightConfig(LightChannel.FRONT_GREEN, LightEffect.STEADY, 100, 0, 0);
+		LightConfig itLightFront = new LightConfig(LightChannel.FRONT_RED, LightEffect.STEADY, 15, 0, 1);
+		LightConfig itLightFront2 = new LightConfig(LightChannel.FRONT_GREEN, LightEffect.FLASH, 15, 0, 1);
 		LightsPatternMessage lpm = new LightsPatternMessage();
-		lpm.add(itLightEngine);
 		lpm.add(itLightFront);
+		lpm.add(itLightFront2);
 		it.getVehicle().sendMessage(lpm);
+		it.getVehicle().sendMessage(lpm); //Sometimes it gets ignored...
 		lpm = new LightsPatternMessage();
-		lpm.add(tagLightEngine);
+		LightConfig tagLightFront = new LightConfig(LightChannel.FRONT_GREEN, LightEffect.STEADY, 15, 0, 1);
+		LightConfig tagLightFront2 = new LightConfig(LightChannel.FRONT_RED, LightEffect.FLASH, 15, 0, 1);
 		lpm.add(tagLightFront);
+		lpm.add(tagLightFront2);
 		try {
 			Thread.sleep(10);
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
 		tagger.getVehicle().sendMessage(lpm);
+		tagger.getVehicle().sendMessage(lpm); //Sometimes it gets ignored...
 	}
 	
 	/**
@@ -453,8 +467,9 @@ public class GameManager {
 		}
 	}
 	
-	private void turnAround(SocketMessageWithVehicle msgv) {
+	private void turnAround(SocketMessageWithVehicle msgv) throws ServerException {
 		msgv.myVehicle.getVehicle().sendMessage(new TurnMessage(3, 0));
+		connectedClients.get(msgv.myVehicle.getClientManagerId()).sendCmd(1016, TURN_DEC + ";0");
 	}
 	
 	/**
@@ -536,7 +551,7 @@ public class GameManager {
 	 * @throws ServerException 
 	 */
 	private void tagOccured() throws ServerException {
-		long SWAP_DELAY = 2000; // ms
+		long SWAP_DELAY = 2000;
 		swapping.set(true);
 		Timer swapTimer = new Timer();
 		swapTimer.schedule(new TimerTask() { // Allow the tagger to move in a few seconds
@@ -546,13 +561,13 @@ public class GameManager {
 			}
 		}, SWAP_DELAY);
 		tagger.incScore(1);
-		connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, "1;0"); //tell tagger their score is up
-		connectedClients.get(it.getClientManagerId()).sendCmd(1016, "0;1"); //tell it their opponent's score is up
+		connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, TAG_INC + ";0"); //tell tagger their score is up
+		connectedClients.get(it.getClientManagerId()).sendCmd(1016, "0;" + TAG_INC); //tell it their opponent's score is up
 		try {
 			scoreTimer.cancel(); // Stop timer, restart it and give a few seconds to account for the swap delay
 		} catch (IllegalStateException ie) {}
 		scoreTimer = new Timer();
-		scoreTimer.scheduleAtFixedRate(new IncrementScoreTask(), SWAP_DELAY, 30000);
+		scoreTimer.scheduleAtFixedRate(new IncrementScoreTask(), TIME_INC_DURATION, TIME_INC_DURATION);
 		try {
 			blockDuration.cancel();
 		} catch (IllegalStateException ie) {}
@@ -604,7 +619,7 @@ public class GameManager {
 		}
 		
 		@Override
-		public void messageReceived(VehicleDelocalizedMessage m) {
+		public void messageReceived(VehicleDelocalizedMessage m) { //TODO pause score timers till back on track
 			System.out.println("DELOCALIZED");
 		}
 	}
@@ -692,8 +707,8 @@ public class GameManager {
 		@Override
 		public void run(){
 			try {
-				connectedClients.get(it.getClientManagerId()).sendCmd(1016, "2;0");
-				connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, "0;2");
+				connectedClients.get(it.getClientManagerId()).sendCmd(1016, TIME_INC + ";0");
+				connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, "0;" + TIME_INC);
 			} catch (ServerException e) {
 				e.printStackTrace(); //I would like to throw instead...
 			}
