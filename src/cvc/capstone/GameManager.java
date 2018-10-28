@@ -35,11 +35,12 @@ public class GameManager {
 	private static final int TURN_SPEED = 500;
 	private static final int TURN_ACCEL = 1000;
 	private static final int SLOWDOWN_OCCURENCE = 1000; //how often the cars get a slowdown command (ms)
-	private static final int SCAN_TRACK_TIMEOUT = 80000; //scanTrack() will return false if it takes too long
+	private static final int SCAN_TRACK_TIMEOUT_TOTAL = 80000; //scanTrack() will return false if it takes too long
+	private static final int SCAN_TRACK_TIMEOUT = 20000; //scanTrack() will return false if it takes too long
 	private static final int TIME_INC_DURATION = 30000; //ms. how often TIME_INC will occur
 	private static final int BLOCKING_DURATION = 3000; //how long 'it' will block for
 	private static final int BLOCKING_COOLDOWN = 10000; //how long before 'it' can use cooldown again.
-	private static final int WIN_SCORE = 50; //50 or so?
+	private static final int WIN_SCORE = 50;
 	private static final String TAG_INC = "5"; //bonus for successful tag
 	private static final String TIME_INC = "10"; //bonus for staying 'it' for some time
 	private static final String TURN_DEC = "-1"; //punishment for turning
@@ -94,10 +95,8 @@ public class GameManager {
 	 * Notify clients their roles and that the game is starting, handle game logic
 	 * until end condition is detected
 	 */
-	public void mainGameLoop() {
+	public void mainGameLoop() { //TODO fix end game
 		try {
-			it = vehicles.get(0);
-			tagger = vehicles.get(1);
 			//Set lights for start of game
 			startingLights();
 			
@@ -238,6 +237,8 @@ public class GameManager {
 	 */
 	public boolean scanTrack() { //TODO improve robustness
 		System.out.println("Scanning track...");
+		it = vehicles.get(0);
+		tagger = vehicles.get(1);
 		int time = 0;
 		try {
 			roadMapScannerOne.startScanning();
@@ -266,6 +267,22 @@ public class GameManager {
 			vehicles.get(1).getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, 50, 1000));
 			Thread.sleep(20);
 			vehicles.get(1).getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, 50, 1000));
+			while (!roadMapScannerOne.isComplete() 
+					&& !roadMapScannerTwo.isComplete()
+					&& time < SCAN_TRACK_TIMEOUT_TOTAL) {
+				try {
+					time = time + 2;
+					Thread.sleep(2);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+					return false;
+				}
+			}
+			if (time >= SCAN_TRACK_TIMEOUT_TOTAL) {
+				System.out.println("Timeout reached while scanning. Exiting.");
+				return false;
+			}
+			time = 0;
 			while (!roadMapScannerOne.isComplete() && time < SCAN_TRACK_TIMEOUT) {
 				try {
 					time = time + 2;
@@ -285,13 +302,15 @@ public class GameManager {
 					return false;
 				}
 			}
-			vehicles.get(1).getVehicle().sendMessage(new SetSpeedMessage(0, 12500));
 			if (time >= SCAN_TRACK_TIMEOUT) {
-				System.out.println("Timeout reached while scanning. Exiting.");
-				return false;
+				System.out.println("One of the cars has failed to scan, continuing anyways");
 			}
-			roadMap = roadMapScannerOne.getRoadmap();
-			Roadmap tempMap = roadMapScannerTwo.getRoadmap();
+			vehicles.get(1).getVehicle().sendMessage(new SetSpeedMessage(0, 12500));
+			if (roadMapScannerOne.isComplete()) {
+				roadMap = roadMapScannerOne.getRoadmap();
+			} else {
+				roadMap = roadMapScannerTwo.getRoadmap();
+			}
 			vehicles.get(0).getVehicle().removeAllListeners();
 			vehicles.get(1).getVehicle().removeAllListeners(); // For the listeners the roadmap scanner added
 			attachHandles(vehicles);
@@ -532,7 +551,7 @@ public class GameManager {
 		if (msgv.myVehicle == it) {
 			return; //it can't tag itself
 		}
-		if (it.getLaneOffset() != tagger.getLaneOffset()) { // not same lane
+		if (it.getTagLaneOffset() != tagger.getTagLaneOffset()) { // not same lane
 			return;
 		}
 		if (blocking.get()) {
@@ -697,7 +716,7 @@ public class GameManager {
 	private void ankiCleanup() {
 		it.getVehicle().disconnect();
 		tagger.getVehicle().disconnect();
-		anki.close();
+		//anki.close();
 		try {
 			Thread.sleep(3000);
 		} catch (InterruptedException e) {
@@ -759,11 +778,13 @@ public class GameManager {
 		
 		@Override
 		public void messageReceived(VehicleDelocalizedMessage m) {
+			if (scoreTimer == null) { //This can happen if we haven't passed the scanning stage
+				return;
+			}
 			System.out.println("DELOCALIZED. Game paused until car is detected back on track.");
 			try {
 				scoreTimer.cancel();
 			} catch (IllegalStateException e) {}
-			myVehicle.getOffTrack().set(true);
 		}
 	}
 	

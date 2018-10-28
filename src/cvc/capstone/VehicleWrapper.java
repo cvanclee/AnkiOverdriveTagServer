@@ -11,6 +11,7 @@ public class VehicleWrapper {
 	private volatile AtomicInteger speed;
 	private volatile AtomicInteger accel;
 	private volatile float laneOffset; // no AtomicFloat. synchronize all access instead
+	private volatile float tagLaneOffset; //Offset that takes bearing into account (lane swapping won't work without this)
 	private volatile int score; //Game score
 	private float[] offsets = { GameManager.LEFTMOST_OFFSET, GameManager.LEFTINNER_OFFSET,
 			GameManager.RIGHTINNER_OFFSET, GameManager.RIGHTMOST_OFFSET };
@@ -84,6 +85,10 @@ public class VehicleWrapper {
 		return laneOffset;
 	}
 	
+	public synchronized float getTagLaneOffset() {
+		return tagLaneOffset;
+	}
+	
 	public AtomicInteger getPieceIndex() {
 		return pieceIndex;
 	}
@@ -105,20 +110,10 @@ public class VehicleWrapper {
 			}
 		}
 		laneOffset = offsets[idx];
-	}
-
-	private enum VehicleNames {
-		KOURAI(0x01, "Kourai"), BOSON(0x02, "Boson"), RHO(0x03, "Rho"), KATAL(0x04, "Katal"), HADION(0x05,
-				"Hadion"), SPEKTRIX(0x06, "Spektrix"), CORAX(0x07, "Corax"), GROUNDSHOCK(0x08, "Groundshock"), SKULL(
-						0x09, "Skull"), THERMO(0x0a, "Thermo"), NUKE(0x0b, "Nuke"), GUARDIAN(0x0d, "Guardian"), BIGBANG(
-								0x0e, "BigBang"), FREEWHEEL(0x0f, "Freewheel"), X52ICE(0x11, "X52Ice");
-
-		int id;
-		String name;
-
-		private VehicleNames(int id, String name) {
-			this.id = id;
-			this.name = name;
+		if (bearing.get()) {
+			tagLaneOffset = offsets[idx];
+		} else {
+			tagLaneOffset = -(offsets[idx]);
 		}
 	}
 }
