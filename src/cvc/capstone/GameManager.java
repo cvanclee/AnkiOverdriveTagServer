@@ -235,7 +235,7 @@ public class GameManager {
 	 * 
 	 * @return true if a valid track is scanned
 	 */
-	public boolean scanTrack() { //TODO improve robustness
+	public boolean scanTrack() {
 		System.out.println("Scanning track...");
 		it = vehicles.get(0);
 		tagger = vehicles.get(1);
@@ -716,7 +716,7 @@ public class GameManager {
 	private void ankiCleanup() {
 		it.getVehicle().disconnect();
 		tagger.getVehicle().disconnect();
-		//anki.close();
+		anki.close();
 		try {
 			Thread.sleep(3000);
 		} catch (InterruptedException e) {
