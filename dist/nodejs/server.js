@@ -9,7 +9,7 @@ var server = net.createServer(function(client) {
 	  if (state == 'poweredOn') {
 		  console.log("Noble on");
 	  } else {
-		  noble.log("Noble not on")
+		  noble.log("Noble not on");
 	  }
   });
   client.on("error", (err) => {
@@ -19,8 +19,6 @@ var server = net.createServer(function(client) {
   client.on("data", function(data) {
     data.toString().split("\r\n").forEach(function(line) {
 	  var command = line.toString().trim().split(";");
-	  if (command[0])
-	    console.log(command)
 	  switch(command[0])
 	  {
 	    case "SCAN":
@@ -109,7 +107,12 @@ var server = net.createServer(function(client) {
 	      vehicle.disconnect();
 	      client.write("DISCONNECT;SUCCESS\n");
 	      break;
-	    
+	      
+	    case "EXIT":
+	    	client.write("BYE\n");
+	    	server.close(function () { console.log('Server closed!'); });
+	    	client.destroy();
+	    	break;
 	    default:
 	      if (command.length == 2 && noble._peripherals[command[0]] !== undefined) {
 	        var vehicle = noble._peripherals[command[0]];

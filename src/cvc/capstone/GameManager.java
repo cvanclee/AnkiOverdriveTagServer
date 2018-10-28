@@ -84,8 +84,6 @@ public class GameManager {
 		roadMapScannerTwo = new RoadmapScanner(vehicles.get(1).getVehicle());
 		if (!scanTrack()) {
 			System.out.println("Failed to properly scan track. Exiting.");
-			killClientManagers();
-			ankiCleanup();
 			return;
 		}
 		mainGameLoop();
@@ -657,7 +655,6 @@ public class GameManager {
 		try {
 			slowTimer.cancel();
 		} catch (IllegalStateException ie) {}
-		ankiCleanup();
 		ClientManager itClient = connectedClients.get(it.getClientManagerId());
 		ClientManager taggerClient = connectedClients.get(tagger.getClientManagerId());
 		if (disconnected) {
@@ -700,22 +697,29 @@ public class GameManager {
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
-		killClientManagers();
 	}
-	
-	private void killClientManagers() {
-		connectedClients.get(it.getClientManagerId()).interrupt();
-		connectedClients.get(tagger.getClientManagerId()).interrupt();
+
+	public void killClientManagers() {
+		try {
+			connectedClients.get(it.getClientManagerId()).interrupt();
+		} catch (Exception e) {}
+		try {
+			connectedClients.get(tagger.getClientManagerId()).interrupt();
+		} catch (Exception e) {}
 		try {
 			Thread.sleep(1000);
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
 	}
-	
-	private void ankiCleanup() {
-		it.getVehicle().disconnect();
-		tagger.getVehicle().disconnect();
+
+	public void ankiCleanup() {
+		try {
+			it.getVehicle().disconnect();
+		} catch (Exception e) {}
+		try {
+			tagger.getVehicle().disconnect();
+		} catch (Exception e) {}
 		anki.close();
 		try {
 			Thread.sleep(3000);
