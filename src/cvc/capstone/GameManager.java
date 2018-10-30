@@ -40,7 +40,7 @@ public class GameManager {
 	private static final int TIME_INC_DURATION = 30000; //ms. how often TIME_INC will occur
 	private static final int BLOCKING_DURATION = 3000; //how long 'it' will block for
 	private static final int BLOCKING_COOLDOWN = 10000; //how long before 'it' can use cooldown again.
-	private static final int WIN_SCORE = 50;
+	private static final int WIN_SCORE = 50; //TODO default 50
 	private static final String TAG_INC = "5"; //bonus for successful tag
 	private static final String TIME_INC = "10"; //bonus for staying 'it' for some time
 	private static final String TURN_DEC = "-1"; //punishment for turning
@@ -402,15 +402,15 @@ public class GameManager {
 	 * Set lights for start of game and for role swaps
 	 */
 	private synchronized void startingLights() {
-		LightConfig itLightFront = new LightConfig(LightChannel.FRONT_RED, LightEffect.STEADY, 15, 0, 1);
-		LightConfig itLightFront2 = new LightConfig(LightChannel.FRONT_GREEN, LightEffect.FLASH, 15, 0, 1);
+		LightConfig itLightFront = new LightConfig(LightChannel.FRONT_GREEN, LightEffect.STEADY, 15, 0, 1);
+		LightConfig itLightFront2 = new LightConfig(LightChannel.FRONT_RED, LightEffect.FLASH, 15, 0, 1);
 		LightsPatternMessage lpm = new LightsPatternMessage();
 		lpm.add(itLightFront);
 		lpm.add(itLightFront2);
 		it.getVehicle().sendMessage(lpm, false);
 		lpm = new LightsPatternMessage();
-		LightConfig tagLightFront = new LightConfig(LightChannel.FRONT_GREEN, LightEffect.STEADY, 15, 0, 1);
-		LightConfig tagLightFront2 = new LightConfig(LightChannel.FRONT_RED, LightEffect.FLASH, 15, 0, 1);
+		LightConfig tagLightFront = new LightConfig(LightChannel.FRONT_RED, LightEffect.STEADY, 15, 0, 1);
+		LightConfig tagLightFront2 = new LightConfig(LightChannel.FRONT_GREEN, LightEffect.FLASH, 15, 0, 1);
 		lpm.add(tagLightFront);
 		lpm.add(tagLightFront2);
 		try {
@@ -657,6 +657,8 @@ public class GameManager {
 		} catch (IllegalStateException ie) {}
 		ClientManager itClient = connectedClients.get(it.getClientManagerId());
 		ClientManager taggerClient = connectedClients.get(tagger.getClientManagerId());
+		System.out.println("It's score: " + it.getScore());
+		System.out.println("Tagger's score: " + tagger.getScore());
 		if (disconnected) {
 			String mainReason = "The game has ended because a player left. You win!";
 			if (itClient.getLeftGame().get()) {
@@ -745,8 +747,7 @@ public class GameManager {
 		blockOnCooldown.set(true);
 		blocking.set(true);
 		LightsPatternMessage lpm = new LightsPatternMessage();
-		LightConfig itLightFront = new LightConfig(LightChannel.FRONT_RED, LightEffect.STROBE, 14, 0, 8);
-		//LightConfig itLightFront = new LightConfig(LightChannel.FRONT_RED, LightEffect.FLASH, 14, 1, 11);
+		LightConfig itLightFront = new LightConfig(LightChannel.FRONT_GREEN, LightEffect.STROBE, 14, 0, 8);
 		lpm.add(itLightFront);
 		it.getVehicle().sendMessage(lpm);
 		it.getVehicle().sendMessage(lpm); //Sometimes it gets ignored...
