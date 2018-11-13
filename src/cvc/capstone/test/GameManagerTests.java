@@ -15,6 +15,7 @@ import org.junit.Test;
 
 import cvc.capstone.GameManager;
 import cvc.capstone.SocketMessage;
+import cvc.capstone.SocketMessageWithVehicle;
 import cvc.capstone.VehicleWrapper;
 import de.adesso.anki.AdvertisementData;
 import de.adesso.anki.AnkiConnector;
@@ -112,11 +113,13 @@ public class GameManagerTests {
 	 * Equivalence classes:
 	 * The cars finish scanning a valid track (return true)
 	 * The cars finish scanning an invalid track (return false)
-	 * The cars never finish scanning the track (timeout reached, return false) 
+	 * The cars never finish scanning the track (timeout reached, return false)
+	 * A single car finishes scanning (return true) TODO
+	 * The cars are detected off track (return true) TODO
 	 * 
 	 * BUGS: 
-	 * forgot to return false if no start piece is found
-	 * timeout check should be >= SCAN_TRACK_TIMEOUT, instead of > SCAN_TRACK_TIMEOUT
+	 * forgot to return false if no start piece is found (test two)
+	 * timeout check should be >= SCAN_TRACK_TIMEOUT, instead of > SCAN_TRACK_TIMEOUT (test three)
 	 */
 	@Test
 	public void scanTrackTestOne() throws IOException {
@@ -211,6 +214,123 @@ public class GameManagerTests {
 		assertEquals(r, false);
 	}
 	
+	/**
+	 * Equivalence classes:
+	 * The road map is null (nullptr exception)
+	 * The road map contains ÅenÅf unique pieces (uniquePieceIdMap.size() == ÅenÅf)
+	 * The road map is empty (uniquePieceIdMap.size() == 0)
+	 */
+	@Test
+	public void generateUniqueMapTestOne() {
+		ArrayList<Roadpiece> map = null;
+		manager.setRoadMapTESTONLY(map);
+		try {
+			manager.generateUniqueMap();
+		} catch (NullPointerException e) {
+			assertEquals(1, 1);
+			return;
+		}
+		assertEquals(0, 1);
+	}
+	
+	@Test
+	public void generateUniqueMapTestTwo() {
+		ArrayList<Roadpiece> map = new ArrayList<Roadpiece>();
+		manager.setRoadMapTESTONLY(map);
+		Roadpiece p1 = Roadpiece.createFromId(17);
+		Roadpiece p2 = Roadpiece.createFromId(18);
+		Roadpiece p3 = Roadpiece.createFromId(20);
+		Roadpiece p4 = Roadpiece.createFromId(23);
+		Roadpiece p5 = Roadpiece.createFromId(23);
+		p1.setPieceId(17);
+		p2.setPieceId(18);
+		p3.setPieceId(20);
+		p4.setPieceId(23);
+		p5.setPieceId(23);
+		manager.getRoadMap().add(p1);
+		manager.getRoadMap().add(p2);
+		manager.getRoadMap().add(p3);
+		manager.getRoadMap().add(p4);
+		manager.getRoadMap().add(p5);
+		manager.generateUniqueMap();
+		assertEquals(manager.getUniquePieceIdMap().size(), 3);
+	}
+	
+	@Test
+	public void generateUniqueMapTestThree() {
+		ArrayList<Roadpiece> map = new ArrayList<Roadpiece>();
+		manager.setRoadMapTESTONLY(map);
+		manager.generateUniqueMap();
+	}
+	
+	/**
+	 * Equivalence classes:
+	 * The message passed is null (NullPointerException thrown)
+	 * VehicleÅfs speed is greater than max speed (return)
+	 * VehicleÅfs speed is less than max speed (return, increase vehicle speed)
+	 */
+	@Test
+	public void increaseCarSpeedTestOne() {
+		SocketMessageWithVehicle msgv = null;
+		try {
+			manager.increaseCarSpeed(msgv);
+		} catch (NullPointerException e) {
+			assertEquals(1, 1);
+			return;
+		}
+		assertEquals(0, 1);
+	}
+	
+	@Test
+	public void increaseCarSpeedTestTwo() {
+		SocketMessage msg = new SocketMessage("", 0, "");
+		VehicleSpoofer v = new VehicleSpoofer();
+		VehicleWrapperSpoofer vws = new VehicleWrapperSpoofer(v, 0);
+		SocketMessageWithVehicle msgv = new SocketMessageWithVehicle(msg, vws);
+		vws.getSpeed().set(GameManager.MAX_SPEED + 1);
+		manager.increaseCarSpeed(msgv);
+		manager.setAnkiTESTONLY(new AnkiConnectorSpoofer());
+		assertEquals(vws.getSpeed().get(), GameManager.MAX_SPEED + 1);
+	}
+	
+	@Test
+	public void increaseCarSpeedTestThree() {
+		SocketMessage msg = new SocketMessage("", 0, "");
+		VehicleSpoofer v = new VehicleSpoofer();
+		VehicleWrapperSpoofer vws = new VehicleWrapperSpoofer(v, 0);
+		SocketMessageWithVehicle msgv = new SocketMessageWithVehicle(msg, vws);
+		manager.increaseCarSpeed(msgv);
+		manager.setAnkiTESTONLY(new AnkiConnectorSpoofer());
+		assertEquals(msgv.myVehicle.getSpeed().get(), GameManager.SPEED_INCREMENT + GameManager.MIN_SPEED);
+	}
+	
+	/**
+	 * No equivalence classes, too much going on. Use CFG for code coverage TODO
+	 */
+	@Test
+	public void tagAttemptTestOne() {
+		
+	}
+	
+	/**
+	 * No equivalence classes, too much going on. Use CFG for code coverage TODO
+	 */
+	@Test
+	public void endGameTestOne() {
+		
+	}
+	
+	/**
+	 * No equivalence classes, too much going on, use CFG and cover code TODO
+	 */
+	@Test
+	public void mainGameLoopTestOne() {
+		
+	}
+	
+	/**
+	 * Utility classes and class spoofers
+	 */
 	private class AnkiConnectorSpoofer extends AnkiConnector {
 		public AnkiConnectorSpoofer(String s, int p) throws IOException {
 			super(s, p);
@@ -271,6 +391,11 @@ public class GameManagerTests {
 		
 		@Override
 		public void sendMessage(Message m) {
+			return;
+		}
+		
+		@Override
+		public void sendMessage(Message m, boolean verbose) {
 			return;
 		}
 		

@@ -22,9 +22,9 @@ import de.adesso.anki.roadmap.roadpieces.Roadpiece;
 
 public class GameManager {
 
-	private static final int SPEED_INCREMENT = 10;
+	public static final int SPEED_INCREMENT = 10;
 	private static final int ACCEL_INCREMENT = 10;
-	private static final int MAX_SPEED = 1400;
+	public static final int MAX_SPEED = 1400;
 	private static final int MAX_ACCEL = 13000;
 	public static final int MIN_SPEED = 400;
 	public static final int MIN_ACCEL = 12000;
@@ -453,7 +453,7 @@ public class GameManager {
 		}
 	}
 	
-	private void increaseCarSpeed(SocketMessageWithVehicle msgv) {
+	public void increaseCarSpeed(SocketMessageWithVehicle msgv) {
 		VehicleWrapper vw = msgv.myVehicle;
 		if (vw.getSpeed().get() > MAX_SPEED || vw.getAcceleration().get() > MAX_ACCEL) {
 			return;
@@ -519,7 +519,7 @@ public class GameManager {
 	 * Find the unique pieces in the track, build hashmap of uniqueId -> mapIndex
 	 * Used later for if we parse a unique piece, we know where the vehicle is for sure
 	 */
-	protected void generateUniqueMap() {
+	public void generateUniqueMap() {
 		uniquePieceIdMap = new HashMap<Integer, Integer>();
 		for (int i = 0; i < roadMapList.size(); i++) {
 			int pieceId = roadMapList.get(i).getPieceId();
@@ -754,6 +754,10 @@ public class GameManager {
 		blockDuration.schedule(new BlockDurationTask(), BLOCKING_DURATION);
 	}
 	
+	public HashMap<Integer, Integer> getUniquePieceIdMap() {
+		return uniquePieceIdMap;
+	}
+	
 	public ArrayBlockingQueue<SocketMessageWithVehicle> getServerClientQueue() {
 		return serverClientQueue;
 	}
@@ -772,6 +776,10 @@ public class GameManager {
 	
 	public AtomicBoolean getClientOverflowStatus() { 
 		return clientOverflowStatus;
+	}
+	
+	public List<Roadpiece> getRoadMap() {
+		return this.roadMapList;
 	}
 	
 	private class CarDelocalizedHandler implements MessageListener<VehicleDelocalizedMessage> {
@@ -942,5 +950,12 @@ public class GameManager {
 	public void setRoadmapScannerTESTONLY(RoadmapScanner s1, RoadmapScanner s2) {
 		this.roadMapScannerOne = s1;
 		this.roadMapScannerTwo = s2;
+	}
+	
+	/**
+	 * TESTING ONLY
+	 */
+	public void setRoadMapTESTONLY(List<Roadpiece> roadMapList) {
+		this.roadMapList = roadMapList;
 	}
 }

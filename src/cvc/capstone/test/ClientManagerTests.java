@@ -86,6 +86,7 @@ public class ClientManagerTests {
 	 * Socket with no connection is passed (ServerException thrown)
 	 * Socket with a connection is passed (return)
 	 * Socket null is passed (ServerException thrown)
+	 * null manager is passed (Server
 	 * 
 	 * BUGS: 
 	 * socket timeout needed to be set at start, not end of constructor
