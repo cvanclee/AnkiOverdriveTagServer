@@ -84,6 +84,14 @@ public class GameManager {
 		roadMapScannerTwo = new RoadmapScanner(vehicles.get(1).getVehicle());
 		if (!scanTrack()) {
 			System.out.println("Failed to properly scan track. Exiting.");
+			try {
+				connectedClients.get(it.getClientManagerId()).sendCmd(-1002, 
+						"Failed to scan track. Make sure it is valid and try again.");
+			} catch (Exception e) {}
+			try {
+				connectedClients.get(tagger.getClientManagerId()).sendCmd(-1002, 
+						"Failed to scan track. Make sure it is valid and try again.");
+			} catch (Exception e) {}
 			return;
 		}
 		mainGameLoop();
@@ -93,14 +101,19 @@ public class GameManager {
 	 * Notify clients their roles and that the game is starting, handle game logic
 	 * until end condition is detected
 	 */
-	public void mainGameLoop() { //TODO fix end game
+	public void mainGameLoop() {
 		try {
 			//Set lights for start of game
 			startingLights();
 			
 			//Notify clients of roles and that the game has begun
-			connectedClients.get(vehicles.get(0).getClientManagerId()).sendCmd(1010, ""); //it
-			connectedClients.get(vehicles.get(1).getClientManagerId()).sendCmd(1011, ""); //tagger
+			try {
+				connectedClients.get(vehicles.get(0).getClientManagerId()).sendCmd(1010, ""); //it
+				connectedClients.get(vehicles.get(1).getClientManagerId()).sendCmd(1011, ""); //tagger
+			} catch (Exception e) {
+				endGame(true);
+				return;
+			}
 			for (ClientManager m : connectedClients.values()) {
 				m.setGameReady(true);
 			}
@@ -126,7 +139,10 @@ public class GameManager {
 					endGame(false);
 					return;
 				} else if (connectedClients.get(it.getClientManagerId()).getLeftGame().get() 
-						|| connectedClients.get(tagger.getClientManagerId()).getLeftGame().get()) { //end condition
+						|| connectedClients.get(tagger.getClientManagerId()).getLeftGame().get()
+						|| connectedClients.get(it.getClientManagerId()).isClosed()
+						|| connectedClients.get(tagger.getClientManagerId()).isClosed()) { //end condition
+					System.out.println("Ending game because someone left.");
 					endGame(true);
 					return;
 				}
@@ -321,18 +337,17 @@ public class GameManager {
 			generateUniqueMap();
 			for (int i = 0; i < roadMapList.size(); i++) {
 				Roadpiece p = roadMapList.get(i);
+				System.out.print(p.getPieceId() + ", reversed " + p.isReversed() + ":::");
 				if (p.getPieceId() == 33) {
 					if (hasStart) {
-						System.out.println("Only one start piece is allowed. Exiting.");
+						System.out.println("\nOnly one start piece is allowed. Exiting.");
 						return false;
 					}
 					hasStart = true;
 				}
-				System.out.print(p.getPieceId() + ", reversed " + p.isReversed() + ":::");
-			
 			}
 			if (!hasStart) {
-				System.out.println("No start piece detected. Exiting.");
+				System.out.println("\nNo start piece detected. Exiting.");
 				return false;
 			}
 			System.out.println("\n------");
@@ -507,12 +522,8 @@ public class GameManager {
 	private void turnAround(SocketMessageWithVehicle msgv) throws ServerException {
 		msgv.myVehicle.getVehicle().sendMessage(new TurnMessage(3, 0));
 		msgv.myVehicle.incScore(Integer.parseInt(TURN_DEC));
-		connectedClients.get(msgv.myVehicle.getClientManagerId()).sendCmd(1016, TURN_DEC + ";0");
-		if (it != msgv.myVehicle) {
-			connectedClients.get(it.getClientManagerId()).sendCmd(1016, "0;" + TURN_DEC);
-		} else {
-			connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, "0;" + TURN_DEC);
-		}
+		connectedClients.get(it.getClientManagerId()).sendCmd(1016, it.getScore() + ";" + tagger.getScore());
+		connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, tagger.getScore() + ";" + it.getScore());
 	}
 	
 	/**
@@ -607,8 +618,8 @@ public class GameManager {
 			}
 		}, SWAP_DELAY);
 		tagger.incScore(Integer.parseInt(TAG_INC));
-		connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, TAG_INC + ";0"); //tell tagger their score is up
-		connectedClients.get(it.getClientManagerId()).sendCmd(1016, "0;" + TAG_INC); //tell it their opponent's score is up
+		connectedClients.get(it.getClientManagerId()).sendCmd(1016, it.getScore() + ";" + tagger.getScore());
+		connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, tagger.getScore() + ";" + it.getScore());
 		
 		// Stop timers dependent on who is it/tagger and create new ones
 		try {
@@ -645,23 +656,23 @@ public class GameManager {
 	private void endGame(boolean disconnected) {
 		try {
 			scoreTimer.cancel(); 
-		} catch (IllegalStateException ie) {}
+		} catch (Exception ie) {}
 		try {
 			blockDuration.cancel();
-		} catch (IllegalStateException ie) {}
+		} catch (Exception ie) {}
 		try {
 			blockCooldown.cancel();
-		} catch (IllegalStateException ie) {}
+		} catch (Exception ie) {}
 		try {
 			slowTimer.cancel();
-		} catch (IllegalStateException ie) {}
+		} catch (Exception ie) {}
 		ClientManager itClient = connectedClients.get(it.getClientManagerId());
 		ClientManager taggerClient = connectedClients.get(tagger.getClientManagerId());
 		System.out.println("It's score: " + it.getScore());
 		System.out.println("Tagger's score: " + tagger.getScore());
 		if (disconnected) {
 			String mainReason = "The game has ended because a player left. You win!";
-			if (itClient.getLeftGame().get()) {
+			if (itClient == null || itClient.getLeftGame().get() || itClient.isClosed()) {
 				try {
 					taggerClient.sendCmd(1013, mainReason);
 				} catch (ServerException e) {}
@@ -670,29 +681,31 @@ public class GameManager {
 					itClient.sendCmd(1013, mainReason);
 				} catch (ServerException e) {}
 			}
-		}
-		String mainReason = "The game has ended because the max score was reached. ";
-		if (it.getScore() > tagger.getScore()) { //it wins
-			try {
-				itClient.sendCmd(1013, mainReason + "You win!");
-			} catch (ServerException e) {}
-			try {
-				taggerClient.sendCmd(1014, mainReason + "You lose.");
-			} catch (ServerException e) {}
-		} else if (it.getScore() < tagger.getScore()) { //tagger wins
-			try {
-				itClient.sendCmd(1013, "You lose.");
-			} catch (ServerException e) {}
-			try {
-				taggerClient.sendCmd(1014, "You win!");
-			} catch (ServerException e) {}
-		} else { //tie
-			try {
-				itClient.sendCmd(1015, mainReason + "You tied!?");
-			} catch (ServerException e) {}
-			try {
-				taggerClient.sendCmd(1015, mainReason + "You tied!?");
-			} catch (ServerException e) {}
+		} else {
+			String mainReason = "The game has ended because the max score was reached. " + "\nFinal score: "
+					+ it.getScore() + " to " + tagger.getScore() + ". ";
+			if (it.getScore() > tagger.getScore()) { // it wins
+				try {
+					itClient.sendCmd(1013, mainReason + "You win!");
+				} catch (ServerException e) {}
+				try {
+					taggerClient.sendCmd(1014, mainReason + "You lose.");
+				} catch (ServerException e) {}
+			} else if (it.getScore() < tagger.getScore()) { // tagger wins
+				try {
+					itClient.sendCmd(1013, "You lose.");
+				} catch (ServerException e) {}
+				try {
+					taggerClient.sendCmd(1014, "You win!");
+				} catch (ServerException e) {}
+			} else { // tie
+				try {
+					itClient.sendCmd(1015, mainReason + "You tied!?");
+				} catch (ServerException e) {}
+				try {
+					taggerClient.sendCmd(1015, mainReason + "You tied!?");
+				} catch (ServerException e) {}
+			}
 		}
 		try {
 			Thread.sleep(1000);
@@ -883,8 +896,8 @@ public class GameManager {
 		public void run(){
 			try {
 				it.incScore(Integer.parseInt(TIME_INC));
-				connectedClients.get(it.getClientManagerId()).sendCmd(1016, TIME_INC + ";0");
-				connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, "0;" + TIME_INC);
+				connectedClients.get(it.getClientManagerId()).sendCmd(1016, it.getScore() + ";" + tagger.getScore());
+				connectedClients.get(tagger.getClientManagerId()).sendCmd(1016, tagger.getScore() + ";" + it.getScore());
 			} catch (ServerException e) {
 				e.printStackTrace(); //I would like to throw instead...
 			}

@@ -55,6 +55,8 @@ public class ClientManager extends Thread {
 			e.printStackTrace();
 		}
 		try {
+			out.flush();
+			os.flush();
 			clientSocket.close();
 		} catch (IOException e) {e.printStackTrace();}
 	}
@@ -74,6 +76,8 @@ public class ClientManager extends Thread {
 			os.flush();
 		} catch (IOException e) {
 			try {
+				out.flush();
+				os.flush();
 				clientSocket.close();
 			} catch (IOException io) {
 				clientSocket = null;
@@ -100,6 +104,8 @@ public class ClientManager extends Thread {
 					continue;
 				} catch (Exception e) {
 					try {
+						out.flush();
+						os.flush();
 						clientSocket.close();
 					} catch (IOException io) {
 						clientSocket = null;
@@ -119,6 +125,8 @@ public class ClientManager extends Thread {
 					continue;
 				} catch (Exception e) {
 					try {
+						out.flush();
+						os.flush();
 						clientSocket.close();
 					} catch (IOException io) {
 						clientSocket = null;
@@ -136,6 +144,8 @@ public class ClientManager extends Thread {
 			}
 		} catch (Exception e) {
 			try {
+				out.flush();
+				os.flush();
 				clientSocket.close();
 			} catch (IOException io) {
 				clientSocket = null;
@@ -182,6 +192,8 @@ public class ClientManager extends Thread {
 				}
 			} catch (Exception e) {
 				try {
+					out.flush();
+					os.flush();
 					clientSocket.close();
 				} catch (IOException ie) {
 					clientSocket = null;
@@ -203,6 +215,8 @@ public class ClientManager extends Thread {
 		myManager.addVehicle(myVehicle);
 		myManager.getConnectedClients().remove(myId);
 		try {
+			out.flush();
+			os.flush();
 			clientSocket.close();
 		} catch (IOException e) {
 			clientSocket = null;;
@@ -236,6 +250,10 @@ public class ClientManager extends Thread {
 	
 	public boolean isReady() {
 		return ready.get();
+	}
+	
+	public boolean isClosed() {
+		return clientSocket.isClosed();
 	}
 	
 	public AtomicBoolean getLeftGame() {
