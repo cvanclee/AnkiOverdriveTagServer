@@ -22,8 +22,8 @@ import de.adesso.anki.roadmap.roadpieces.Roadpiece;
 
 public class GameManager {
 
-	public static final int SPEED_INCREMENT = 10;
-	private static final int ACCEL_INCREMENT = 10;
+	public static final int SPEED_INCREMENT = 13;
+	private static final int ACCEL_INCREMENT = 13;
 	public static final int MAX_SPEED = 1400;
 	private static final int MAX_ACCEL = 13000;
 	public static final int MIN_SPEED = 400;
@@ -42,7 +42,7 @@ public class GameManager {
 	private static final int BLOCKING_COOLDOWN = 10000; //how long before 'it' can use cooldown again.
 	private static final int WIN_SCORE = 15; //TODO default 50
 	private static final String TAG_INC = "5"; //bonus for successful tag
-	private static final String TIME_INC = "10"; //bonus for staying 'it' for some time
+	private static final String TIME_INC = "7"; //bonus for staying 'it' for some time
 	private static final String TURN_DEC = "-1"; //punishment for turning
 	private AnkiConnector anki;
 	protected volatile List<VehicleWrapper> vehicles;
@@ -668,8 +668,8 @@ public class GameManager {
 		} catch (Exception ie) {}
 		ClientManager itClient = connectedClients.get(it.getClientManagerId());
 		ClientManager taggerClient = connectedClients.get(tagger.getClientManagerId());
-		System.out.println("It's score: " + it.getScore());
-		System.out.println("Tagger's score: " + tagger.getScore());
+		System.out.println("Hunted's score: " + it.getScore());
+		System.out.println("Hunter's score: " + tagger.getScore());
 		if (disconnected) {
 			String mainReason = "The game has ended because a player left. You win!";
 			if (itClient == null || itClient.getLeftGame().get() || itClient.isClosed()) {
