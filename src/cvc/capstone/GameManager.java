@@ -40,7 +40,7 @@ public class GameManager {
 	private static final int TIME_INC_DURATION = 30000; //ms. how often TIME_INC will occur
 	private static final int BLOCKING_DURATION = 3000; //how long 'it' will block for
 	private static final int BLOCKING_COOLDOWN = 10000; //how long before 'it' can use cooldown again.
-	private static final int WIN_SCORE = 15; //TODO default 50
+	public static int WIN_SCORE = 10; //TODO default 50
 	private static final String TAG_INC = "5"; //bonus for successful tag
 	private static final String TIME_INC = "7"; //bonus for staying 'it' for some time
 	private static final String TURN_DEC = "-1"; //punishment for turning
@@ -316,14 +316,17 @@ public class GameManager {
 					return false;
 				}
 			}
-			if (time >= SCAN_TRACK_TIMEOUT) {
-				System.out.println("One of the cars has failed to scan, continuing anyways");
-			}
 			vehicles.get(1).getVehicle().sendMessage(new SetSpeedMessage(0, 12500));
 			if (roadMapScannerOne.isComplete()) {
 				roadMap = roadMapScannerOne.getRoadmap();
-			} else {
+			} else if (roadMapScannerTwo.isComplete()) {
 				roadMap = roadMapScannerTwo.getRoadmap();
+			} else {
+				System.out.println("Both cars failed to scan the track.");
+				return false;
+			}
+			if (time >= SCAN_TRACK_TIMEOUT) {
+				System.out.println("One of the cars has failed to scan, continuing anyways");
 			}
 			vehicles.get(0).getVehicle().removeAllListeners();
 			vehicles.get(1).getVehicle().removeAllListeners(); // For the listeners the roadmap scanner added
@@ -915,11 +918,11 @@ public class GameManager {
 		@Override
 		public void run() {
 			for (VehicleWrapper vw : vehicles) {
+				vw.getVehicle().sendMessage(new SetSpeedMessage(vw.getSpeed().get(), vw.getAcceleration().get()), false);
 				if (vw.getSpeed().get() < MIN_SPEED || vw.getAcceleration().get() < MIN_ACCEL) {
 					continue;
 				}
 				vw.changeSpeedAndAccel(SPEED_SLOWDOWN, ACCEL_SLOWDOWN);
-				vw.getVehicle().sendMessage(new SetSpeedMessage(vw.getSpeed().get(), vw.getAcceleration().get()), false);
 			}
 			if (!blocking.get()) {
 				startingLights(); //Spam light updates, since they get ignored so often
