@@ -257,7 +257,6 @@ public class GameManager {
 		try {
 			roadMapScannerOne.startScanning();
 			Thread.sleep(20);
-			vehicles.get(0).getVehicle().sendMessage(new SetOffsetFromRoadCenterMessage(0));
 			Thread.sleep(20);
 			vehicles.get(0).getVehicle().sendMessage(new ChangeLaneMessage(LEFTMOST_OFFSET, 50, 1000));
 			Thread.sleep(20);
@@ -274,7 +273,6 @@ public class GameManager {
 			}
 			roadMapScannerTwo.startScanning();
 			Thread.sleep(20);
-			vehicles.get(1).getVehicle().sendMessage(new SetOffsetFromRoadCenterMessage(0));
 			Thread.sleep(20);
 			vehicles.get(1).getVehicle().sendMessage(new ChangeLaneMessage(RIGHTMOST_OFFSET, 50, 1000));
 			Thread.sleep(20);
