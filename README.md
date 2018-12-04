@@ -1,7 +1,7 @@
 Deployment:
 
 Both the client and server require Java 8 to be installed. The client requires connection to 
-a network that can communicate with the server, and vice versa. The server should work on any 
+a network that can communicate with the server, and vice versa. The server should work on most 
 Linux machine with Bluetooth Low Energy capabilities. 
 
 The general procedure is to make sure the server's Bluetooth adapter is working, then 
