@@ -478,7 +478,7 @@ public class GameManager {
 		vw.getVehicle().sendMessage(new SetSpeedMessage(vw.getSpeed().get(), vw.getAcceleration().get()), false);
 	}
 
-	private void changeLaneLeft(SocketMessageWithVehicle msgv) {
+	public void changeLaneLeft(SocketMessageWithVehicle msgv) {
 		switch ((int) msgv.myVehicle.getLaneOffset()) { // has to be int to switch
 		case (int) LEFTMOST_OFFSET:
 			return;
@@ -499,7 +499,7 @@ public class GameManager {
 		}
 	}
 	
-	private void changeLaneRight(SocketMessageWithVehicle msgv) {
+	public void changeLaneRight(SocketMessageWithVehicle msgv) {
 		switch ((int) msgv.myVehicle.getLaneOffset()) { // has to be int to switch
 		case (int) RIGHTMOST_OFFSET:
 			return;
@@ -557,7 +557,7 @@ public class GameManager {
 	 * 
 	 * @param msgv
 	 */
-	private void tagAttempt(SocketMessageWithVehicle msgv) throws ServerException{
+	public void tagAttempt(SocketMessageWithVehicle msgv) throws ServerException{
 		if (msgv.myVehicle == it) {
 			return; //it can't tag itself
 		}
@@ -654,7 +654,7 @@ public class GameManager {
 	 * 
 	 * @param disconnected true if this was called because a client left the game
 	 */
-	private void endGame(boolean disconnected) {
+	public void endGame(boolean disconnected) {
 		try {
 			scoreTimer.cancel(); 
 		} catch (Exception ie) {}
@@ -694,10 +694,10 @@ public class GameManager {
 				} catch (ServerException e) {}
 			} else if (it.getScore() < tagger.getScore()) { // tagger wins
 				try {
-					itClient.sendCmd(1013, "You lose.");
+					itClient.sendCmd(1014, "You lose.");
 				} catch (ServerException e) {}
 				try {
-					taggerClient.sendCmd(1014, "You win!");
+					taggerClient.sendCmd(1013, "You win!");
 				} catch (ServerException e) {}
 			} else { // tie
 				try {
@@ -971,5 +971,33 @@ public class GameManager {
 	 */
 	public void setRoadMapTESTONLY(List<Roadpiece> roadMapList) {
 		this.roadMapList = roadMapList;
+	}
+	
+	/**
+	 * TESTING ONLY
+	 */
+	public void setItTESTONLY(VehicleWrapper it) {
+		this.it = it;
+	}
+	
+	/**
+	 * TESTING ONLY
+	 */
+	public void setTaggerTESTONLY(VehicleWrapper tagger) {
+		this.tagger = tagger;
+	}
+	
+	/**
+	 * TESTING ONLY
+	 */
+	public void setConnectedClientsTESTONLY(ConcurrentHashMap<Integer, ClientManager> connectedClients) {
+		this.connectedClients = connectedClients;
+	}
+	
+	/**
+	 * TESTING ONLY
+	 */
+	public void forceBlocking() {
+		this.blocking = new AtomicBoolean(true);
 	}
 }

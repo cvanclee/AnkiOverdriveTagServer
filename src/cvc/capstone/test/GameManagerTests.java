@@ -8,12 +8,16 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import cvc.capstone.ClientManager;
 import cvc.capstone.GameManager;
+import cvc.capstone.ServerException;
 import cvc.capstone.SocketMessage;
 import cvc.capstone.SocketMessageWithVehicle;
 import cvc.capstone.VehicleWrapper;
@@ -114,8 +118,6 @@ public class GameManagerTests {
 	 * The cars finish scanning a valid track (return true)
 	 * The cars finish scanning an invalid track (return false)
 	 * The cars never finish scanning the track (timeout reached, return false)
-	 * A single car finishes scanning (return true) TODO
-	 * The cars are detected off track (return true) TODO
 	 * 
 	 * BUGS: 
 	 * forgot to return false if no start piece is found (test two)
@@ -305,27 +307,211 @@ public class GameManagerTests {
 	}
 	
 	/**
-	 * No equivalence classes, too much going on. Use CFG for code coverage TODO
+	 * No equivalence classes, too much going on. Use CFG for code coverage
 	 */
 	@Test
-	public void tagAttemptTestOne() {
-		
+	public void tagAttemptTestOne() throws Exception {
+		VehicleSpoofer itv = new VehicleSpoofer();
+		VehicleWrapperSpoofer it = new VehicleWrapperSpoofer(itv, 0);
+		SocketMessageWithVehicle ms1 = new SocketMessageWithVehicle(null, it);
+		manager.setItTESTONLY(it);
+		try {
+			manager.tagAttempt(ms1); //it can't tag self
+		} catch (ServerException e) {
+			throw e;
+		}
+	}
+	
+	@Test
+	public void tagAttemptTestTwo() throws Exception {
+		VehicleSpoofer itv = new VehicleSpoofer();
+		VehicleWrapperSpoofer it = new VehicleWrapperSpoofer(itv, 0);
+		VehicleSpoofer taggerv = new VehicleSpoofer();
+		VehicleWrapperSpoofer tagger = new VehicleWrapperSpoofer(taggerv, 1);
+		SocketMessageWithVehicle ms1 = new SocketMessageWithVehicle(null, tagger);
+		manager.setItTESTONLY(it);
+		manager.setTaggerTESTONLY(tagger);
+		manager.forceBlocking();
+		try {
+			manager.tagAttempt(ms1);
+		} catch (ServerException e) {
+			throw e;
+		}
 	}
 	
 	/**
-	 * No equivalence classes, too much going on. Use CFG for code coverage TODO
+	 * No equivalence classes, too much going on. Use CFG for code coverage
 	 */
 	@Test
-	public void endGameTestOne() {
-		
+	public void endGameTestOne() throws Exception {
+		VehicleSpoofer itv = new VehicleSpoofer();
+		VehicleWrapperSpoofer it = new VehicleWrapperSpoofer(itv, 0);
+		VehicleSpoofer taggerv = new VehicleSpoofer();
+		VehicleWrapperSpoofer tagger = new VehicleWrapperSpoofer(taggerv, 1);
+		manager.setItTESTONLY(it);
+		manager.setTaggerTESTONLY(tagger);
+		ClientManagerSpoofer itcm = new ClientManagerSpoofer(0);
+		ClientManagerSpoofer taggercm = new ClientManagerSpoofer(1);
+		ConcurrentHashMap<Integer, ClientManager> connectedClients = new ConcurrentHashMap<Integer, ClientManager>();
+		connectedClients.put(0, itcm);
+		connectedClients.put(1, taggercm);
+		manager.setConnectedClientsTESTONLY(connectedClients);
+		AtomicBoolean tr = new AtomicBoolean(true);
+		itcm.setLeft(tr);	
+		manager.endGame(true);
+		assertEquals(taggercm.expectedVal, 1013);
+	}
+	
+	@Test
+	public void endGameTestTwo() throws Exception {
+		VehicleSpoofer itv = new VehicleSpoofer();
+		VehicleWrapperSpoofer it = new VehicleWrapperSpoofer(itv, 0);
+		VehicleSpoofer taggerv = new VehicleSpoofer();
+		VehicleWrapperSpoofer tagger = new VehicleWrapperSpoofer(taggerv, 1);
+		manager.setItTESTONLY(it);
+		manager.setTaggerTESTONLY(tagger);
+		ClientManagerSpoofer itcm = new ClientManagerSpoofer(0);
+		ClientManagerSpoofer taggercm = new ClientManagerSpoofer(1);
+		ConcurrentHashMap<Integer, ClientManager> connectedClients = new ConcurrentHashMap<Integer, ClientManager>();
+		connectedClients.put(0, itcm);
+		connectedClients.put(1, taggercm);
+		manager.setConnectedClientsTESTONLY(connectedClients);
+		AtomicBoolean fle = new AtomicBoolean(false);
+		itcm.setLeft(fle);	
+		taggercm.setLeft(fle);
+		it.incScore(15);
+		tagger.incScore(2);
+		manager.endGame(false);
+		assertEquals(taggercm.expectedVal, 1014);
+		assertEquals(itcm.expectedVal, 1013);
+	}
+	
+	@Test
+	public void endGameTestThree() throws Exception {
+		VehicleSpoofer itv = new VehicleSpoofer();
+		VehicleWrapperSpoofer it = new VehicleWrapperSpoofer(itv, 0);
+		VehicleSpoofer taggerv = new VehicleSpoofer();
+		VehicleWrapperSpoofer tagger = new VehicleWrapperSpoofer(taggerv, 1);
+		manager.setItTESTONLY(it);
+		manager.setTaggerTESTONLY(tagger);
+		ClientManagerSpoofer itcm = new ClientManagerSpoofer(0);
+		ClientManagerSpoofer taggercm = new ClientManagerSpoofer(1);
+		ConcurrentHashMap<Integer, ClientManager> connectedClients = new ConcurrentHashMap<Integer, ClientManager>();
+		connectedClients.put(0, itcm);
+		connectedClients.put(1, taggercm);
+		manager.setConnectedClientsTESTONLY(connectedClients);
+		AtomicBoolean fle = new AtomicBoolean(false);
+		itcm.setLeft(fle);	
+		taggercm.setLeft(fle);
+		it.incScore(2);
+		tagger.incScore(17);
+		manager.endGame(false);
+		assertEquals(taggercm.expectedVal, 1013);
+		assertEquals(itcm.expectedVal, 1014);
+	}
+	
+	@Test
+	public void endGameTestFour() throws Exception {
+		VehicleSpoofer itv = new VehicleSpoofer();
+		VehicleWrapperSpoofer it = new VehicleWrapperSpoofer(itv, 0);
+		VehicleSpoofer taggerv = new VehicleSpoofer();
+		VehicleWrapperSpoofer tagger = new VehicleWrapperSpoofer(taggerv, 1);
+		manager.setItTESTONLY(it);
+		manager.setTaggerTESTONLY(tagger);
+		ClientManagerSpoofer itcm = new ClientManagerSpoofer(0);
+		ClientManagerSpoofer taggercm = new ClientManagerSpoofer(1);
+		ConcurrentHashMap<Integer, ClientManager> connectedClients = new ConcurrentHashMap<Integer, ClientManager>();
+		connectedClients.put(0, itcm);
+		connectedClients.put(1, taggercm);
+		manager.setConnectedClientsTESTONLY(connectedClients);
+		AtomicBoolean fle = new AtomicBoolean(false);
+		itcm.setLeft(fle);	
+		taggercm.setLeft(fle);
+		it.incScore(22);
+		tagger.incScore(22);
+		manager.endGame(false);
+		assertEquals(taggercm.expectedVal, 1015);
+		assertEquals(itcm.expectedVal, 1015);
 	}
 	
 	/**
-	 * No equivalence classes, too much going on, use CFG and cover code TODO
+	 * No equivalence classes, too much going on, use CFG and cover code
 	 */
 	@Test
 	public void mainGameLoopTestOne() {
 		
+	}
+	
+	/**
+	 * Equivalence classes:
+	 * The message passed is null [NullPointerException thrown]
+     * The vehicle is on the leftmost offset [LEFTMOST_OFFSET] (return, no change in vehicle offset value)
+     * The vehicle is on one of the other lane offsets [LEFTINNER_OFFSET] (return, vehicle is moved to LEFTMOST_OFFSET)
+	 */
+	@Test
+	public void changeLaneLeftTestOne() {
+		try {
+			manager.changeLaneLeft(null);
+		} catch(NullPointerException e) {
+			return;
+		}
+		assertEquals(0, 1);
+	}
+	
+	@Test
+	public void changeLaneLeftTestTwo() {
+		VehicleSpoofer v1 = new VehicleSpoofer();
+		VehicleWrapperSpoofer vws1 = new VehicleWrapperSpoofer(v1, 0);
+		vws1.setLaneOffset(GameManager.LEFTINNER_OFFSET);
+		SocketMessageWithVehicle sm1 = new SocketMessageWithVehicle(null, vws1);
+		manager.changeLaneLeft(sm1);
+		assertEquals(vws1.getLaneOffset(), GameManager.LEFTMOST_OFFSET, .01f);
+	}
+	
+	@Test
+	public void changeLaneLeftTestThree() {
+		VehicleSpoofer v1 = new VehicleSpoofer();
+		VehicleWrapperSpoofer vws1 = new VehicleWrapperSpoofer(v1, 0);
+		vws1.setLaneOffset(GameManager.LEFTINNER_OFFSET);
+		SocketMessageWithVehicle sm1 = new SocketMessageWithVehicle(null, vws1);
+		manager.changeLaneLeft(sm1);
+		assertEquals(vws1.getLaneOffset(), GameManager.LEFTMOST_OFFSET, .01f);
+	}
+	
+	/**
+	 * Equivalence classes:	
+	 * The message passed is null [NullPointerException thrown]
+	 * The vehicle is on the rightmost offset [RIGHTMOST_OFFSET] (return, no change in vehicle offset value)
+	 * The vehicle is on one of the other lane offsets [LEFTINNER_OFFSET] (return, vehicle is moved to RIGHTINNER_OFFSET)
+	 */
+	@Test
+	public void changeLaneRightTestOne() {
+		try {
+			manager.changeLaneLeft(null);
+		} catch(NullPointerException e) {
+			return;
+		}
+		assertEquals(0, 1);
+	}
+	
+	@Test
+	public void changeLaneRightTestTwo() {
+		VehicleSpoofer v1 = new VehicleSpoofer();
+		VehicleWrapperSpoofer vws1 = new VehicleWrapperSpoofer(v1, 0);
+		vws1.setLaneOffset(GameManager.RIGHTMOST_OFFSET);
+		SocketMessageWithVehicle sm1 = new SocketMessageWithVehicle(null, vws1);
+		manager.changeLaneRight(sm1);
+		assertEquals(vws1.getLaneOffset(), GameManager.RIGHTMOST_OFFSET, .01f);
+	}
+	
+	@Test
+	public void changeLaneRightTestThree() {
+		VehicleSpoofer v1 = new VehicleSpoofer();
+		VehicleWrapperSpoofer vws1 = new VehicleWrapperSpoofer(v1, 0);
+		vws1.setLaneOffset(GameManager.LEFTINNER_OFFSET);
+		SocketMessageWithVehicle sm1 = new SocketMessageWithVehicle(null, vws1);
+		manager.changeLaneRight(sm1);
+		assertEquals(vws1.getLaneOffset(), GameManager.RIGHTINNER_OFFSET, .01f);
 	}
 	
 	/**
@@ -487,6 +673,24 @@ public class GameManagerTests {
 			Roadmap map = new Roadmap();
 			map.add(33, 0, true);
 			return map;
+		}
+	}
+	
+	private class ClientManagerSpoofer extends ClientManager {
+		
+		public int expectedVal = 0;
+		
+		public ClientManagerSpoofer(int myId) {
+			this.myId = myId;
+		}
+		
+		@Override
+		public void sendCmd(int cmd, String extra) {
+			expectedVal = cmd + expectedVal;
+		}
+		
+		public void setLeft(AtomicBoolean l) {
+			this.leftGame = l;
 		}
 	}
 }

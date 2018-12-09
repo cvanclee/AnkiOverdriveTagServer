@@ -14,13 +14,13 @@ public class ClientManager extends Thread {
 	private final GameManager myManager;
 	private String myUUID;
 	private volatile AtomicBoolean ready;
-	private int myId;
+	protected int myId;
 	private OutputStream os;
 	private ObjectOutputStream out;
 	private ObjectInputStream in;
 	private VehicleWrapper myVehicle;
 	private volatile AtomicBoolean isGameReady;
-	private volatile AtomicBoolean leftGame;
+	protected volatile AtomicBoolean leftGame;
 
 	public ClientManager(Socket clientSocket, GameManager myManager, int myId, VehicleWrapper myVehicle)
 			throws ServerException {
@@ -258,5 +258,12 @@ public class ClientManager extends Thread {
 	
 	public AtomicBoolean getLeftGame() {
 		return leftGame;
+	}
+	
+	/**
+	 * TEST ONLY
+	 */
+	public ClientManager() {
+		myManager = null;
 	}
 }
