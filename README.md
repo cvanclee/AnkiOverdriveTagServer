@@ -47,3 +47,5 @@ Installation instructions and server tested on:
 	Java version: 1.8.0_65
 	
 	NodeJS version: v8.12.0
+
+Important server values can be edited in: AnkiOverdriveTagServer/dist/res/serverProperties.properties

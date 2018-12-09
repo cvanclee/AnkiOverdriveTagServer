@@ -75,6 +75,7 @@ public class MainClass {
 			NODE_JS_SERVER_NAME = prop.getProperty("NODE_JS_SERVER_NAME");
 			MY_SERVER_PORT = Integer.parseInt(prop.getProperty("MY_SERVER_PORT"));
 			COMMUNICATION_TIMEOUT = Integer.parseInt(prop.getProperty("COMMUNICATION_TIMEOUT"));
+			GameManager.WIN_SCORE = Integer.parseInt(prop.getProperty("WIN_SCORE"));
 		} catch (Exception e) {
 			e.printStackTrace();
 			return false;

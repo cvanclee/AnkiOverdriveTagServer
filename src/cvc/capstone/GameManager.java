@@ -40,7 +40,7 @@ public class GameManager {
 	private static final int TIME_INC_DURATION = 30000; //ms. how often TIME_INC will occur
 	private static final int BLOCKING_DURATION = 3000; //how long 'it' will block for
 	private static final int BLOCKING_COOLDOWN = 10000; //how long before 'it' can use cooldown again.
-	public static int WIN_SCORE = 10; //TODO default 50
+	public static int WIN_SCORE = 15;
 	private static final String TAG_INC = "5"; //bonus for successful tag
 	private static final String TIME_INC = "7"; //bonus for staying 'it' for some time
 	private static final String TURN_DEC = "-1"; //punishment for turning
