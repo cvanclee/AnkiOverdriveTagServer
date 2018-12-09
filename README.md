@@ -2,7 +2,9 @@ Deployment:
 
 Both the client and server require Java 8 to be installed. The client requires connection to 
 a network that can communicate with the server, and vice versa. The server should work on most 
-Linux machine with Bluetooth Low Energy capabilities. 
+Linux machine with Bluetooth Low Energy capabilities.
+
+Important server values can be edited in: AnkiOverdriveTagServer/dist/res/serverProperties.properties
 
 The general procedure is to make sure the server's Bluetooth adapter is working, then 
 installing NodeJS and Java 8. Lastly, if the included node modules found in 
@@ -35,6 +37,9 @@ https://www.raspberrypi.org/documentation/installation/noobs.md
 node_modules folder contents and use npm to build the modules if on a different system)
 
 9: Run the server with 'java -jar AnkiOverdriveTagServer/dist/AnkiOverdriveTagServer.jar'
+
+10: Clients can connect by running 'java -jar AnkiOverdriveTagClient/dist/AnkiOverdriveTagClient.jar'
+and specifying the server IP and port. Game tutorial included in client help menu.
 	
 Installation instructions and server tested on:
 
@@ -47,5 +52,3 @@ Installation instructions and server tested on:
 	Java version: 1.8.0_65
 	
 	NodeJS version: v8.12.0
-
-Important server values can be edited in: AnkiOverdriveTagServer/dist/res/serverProperties.properties
